@@ -39,7 +39,12 @@ export function TimerRing({ progress, label, timeLabel, accentColor }: TimerRing
           className="transition-[stroke-dashoffset] duration-1000 ease-linear"
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center gap-1"
+        style={{
+          background: "radial-gradient(circle, var(--background) 45%, transparent 72%)",
+        }}
+      >
         <span className="tabular-nums text-6xl font-light">{timeLabel}</span>
         <span className="text-xs tracking-[0.3em] text-muted">{label}</span>
       </div>

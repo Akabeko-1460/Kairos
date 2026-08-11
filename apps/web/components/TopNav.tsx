@@ -13,8 +13,7 @@ export function TopNav() {
   const pathname = usePathname();
 
   return (
-    <header className="flex w-full items-center justify-between border-b border-border px-8 py-4">
-      <span className="text-sm font-medium tracking-wide text-foreground">Kairos</span>
+    <header className="flex w-full items-center justify-center px-8 pb-4 pt-8">
       <nav className="flex items-center gap-1">
         {TABS.map((tab) => {
           const active = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);

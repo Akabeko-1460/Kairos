@@ -1,3 +1,4 @@
+import { PageTransition } from "@/components/PageTransition";
 import { TopNav } from "@/components/TopNav";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
@@ -26,7 +27,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <TopNav />
-        <div className="flex flex-1 flex-col">{children}</div>
+        <PageTransition>{children}</PageTransition>
       </body>
     </html>
   );

@@ -1,17 +1,21 @@
 "use client";
 
 import { DebugPanel } from "@/components/DebugPanel";
+import { GeometricVisualizer } from "@/components/GeometricVisualizer";
 import { PresetSelector } from "@/components/PresetSelector";
 import { RoundIndicator } from "@/components/RoundIndicator";
 import { TimerRing } from "@/components/TimerRing";
 import { useNow } from "@/hooks/useNow";
 import { useSoundscape } from "@/hooks/useSoundscape";
 import { useTimerStore } from "@/hooks/useTimer";
-import { progress, remainingMs, type PomodoroPreset } from "@kairos/core";
+import { isRunning, progress, remainingMs, type PomodoroPreset } from "@kairos/core";
 import { useState } from "react";
 
 const FOCUS_ACCENT = "var(--focus-accent)";
 const BREAK_ACCENT = "var(--break-accent)";
+// GeometricVisualizer は canvas に直接色を描くので CSS 変数ではなく実 hex 値を渡す。
+const FOCUS_ACCENT_HEX = "#4c6ef5";
+const BREAK_ACCENT_HEX = "#3fae8e";
 
 function formatMmSs(ms: number): string {
   const totalSeconds = Math.ceil(ms / 1000);
@@ -52,6 +56,7 @@ export default function PomodoroPage() {
   const isIdle = state.phase === "idle" || state.phase === "completed";
   const isBreakPhase = state.phase === "shortBreak" || state.phase === "longBreak";
   const accent = isBreakPhase ? BREAK_ACCENT : FOCUS_ACCENT;
+  const accentHex = isBreakPhase ? BREAK_ACCENT_HEX : FOCUS_ACCENT_HEX;
 
   const handleStart = async () => {
     setStarting(true);
@@ -78,23 +83,33 @@ export default function PomodoroPage() {
   const handleSelectPreset = (preset: PomodoroPreset) => changePreset(preset);
 
   return (
-    <div className="grid-bg relative flex flex-1 items-center justify-center px-8 py-12">
+    <div className="grid-bg relative flex flex-1 items-center justify-center overflow-hidden px-8 py-12">
       <button
         type="button"
         onClick={() => setShowDebug((v) => !v)}
-        className="absolute right-8 top-6 text-[10px] tracking-widest text-muted/60 hover:text-muted"
+        className="absolute right-8 top-6 z-10 text-[10px] tracking-widest text-muted/60 hover:text-muted"
       >
         {showDebug ? "HIDE DEBUG" : "DEBUG"}
       </button>
 
-      <div className="flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-center lg:gap-20">
+      <div className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-center lg:gap-20">
         <div className="flex flex-col items-center gap-8">
-          <TimerRing
-            progress={progress(state, now)}
-            label={phaseLabel(state.phase)}
-            timeLabel={formatMmSs(remainingMs(state, now))}
-            accentColor={accent}
-          />
+          <div className="relative flex h-[560px] w-[560px] items-center justify-center">
+            <GeometricVisualizer
+              active={isRunning(state)}
+              accentColor={accentHex}
+              sides={isBreakPhase ? 8 : 6}
+              innerRadiusRatio={0.33}
+              maskInnerPercent={64}
+              maskOuterPercent={94}
+            />
+            <TimerRing
+              progress={progress(state, now)}
+              label={phaseLabel(state.phase)}
+              timeLabel={formatMmSs(remainingMs(state, now))}
+              accentColor={accent}
+            />
+          </div>
 
           <div className="flex items-center gap-4">
             {isIdle ? (

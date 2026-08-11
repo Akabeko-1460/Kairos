@@ -1,5 +1,6 @@
 "use client";
 
+import { GeometricVisualizer } from "@/components/GeometricVisualizer";
 import { SoundIcon, type IconVariant } from "@/components/SoundIcon";
 import { useFreeplay } from "@/hooks/useFreeplay";
 import type { EnginePhase } from "@kairos/audio-engine";
@@ -86,18 +87,26 @@ export default function HomePage() {
     setMasterVolume(v);
   };
 
-  const accent = selected?.accent ?? "var(--muted)";
+  const accent = selected?.accent ?? "#8b8b93";
 
   return (
-    <div className="grid-bg relative flex flex-1 flex-col items-center justify-between px-8 py-14">
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+    <div className="grid-bg relative flex flex-1 flex-col items-center justify-between overflow-hidden px-8 py-14">
+      <GeometricVisualizer
+        active={freeplayPlaying}
+        accentColor={accent}
+        sides={selected?.id === "break" ? 8 : 6}
+        innerRadiusRatio={0.16}
+        maskOuterPercent={58}
+      />
+
+      <div className="relative flex flex-1 flex-col items-center justify-center gap-3 text-center">
         <h1 className="text-3xl font-medium text-foreground">{selected ? selected.label : "Kairos"}</h1>
         <p className="text-sm text-muted">
           {selected ? subtitle : "集中と休憩に合わせて生成されるサウンドスケープを選んでください"}
         </p>
       </div>
 
-      <div className="mb-10 flex max-w-2xl flex-wrap items-center justify-center gap-4">
+      <div className="relative z-10 mb-10 flex max-w-2xl flex-wrap items-center justify-center gap-4">
         {UNLOCKED_SOUNDS.map((entry) => {
           const active = freeplayPhase === entry.phase;
           return (
@@ -130,7 +139,7 @@ export default function HomePage() {
         ))}
       </div>
 
-      <div className="flex w-full max-w-md items-center justify-center gap-4">
+      <div className="relative z-10 flex w-full max-w-md items-center justify-center gap-4">
         <button
           type="button"
           onClick={() => selected && toggleFreeplayPause()}

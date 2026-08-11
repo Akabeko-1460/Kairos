@@ -204,3 +204,13 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     },
   };
 });
+
+/**
+ * ビジュアライザ用。AnalyserNode の生データを直接取得する。
+ * 60fpsで読み出す想定なので、React state/zustand を経由させず直接エンジンから取る。
+ */
+export function getVisualizerFrequencyData(out: Uint8Array<ArrayBuffer>): boolean {
+  if (!engine) return false;
+  engine.getFrequencyData(out);
+  return true;
+}
