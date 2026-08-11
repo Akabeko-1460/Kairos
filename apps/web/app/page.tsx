@@ -1,6 +1,7 @@
 "use client";
 
 import { SoundIcon } from "@/components/SoundIcon";
+import { VolumeSlider } from "@/components/VolumeSlider";
 import { useFreeplay } from "@/hooks/useFreeplay";
 import { useBackgroundArtStore } from "@/lib/backgroundArtStore";
 import { SOUND_THEMES, type SoundTheme } from "@/lib/soundThemes";
@@ -14,31 +15,19 @@ function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
-function VolumeIcon() {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.4}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 10v4h4l5 4V6l-5 4H4Z" />
-      <path d="M16.5 9a4 4 0 0 1 0 6" />
-    </svg>
-  );
-}
-
 export default function HomePage() {
-  const { freeplayCategoryId, freeplayPlaying, ensureEngine, playFreeplay, toggleFreeplayPause, setMasterVolume } =
-    useFreeplay();
+  const {
+    freeplayCategoryId,
+    freeplayPlaying,
+    ensureEngine,
+    playFreeplay,
+    toggleFreeplayPause,
+    masterVolume,
+    setMasterVolume,
+  } = useFreeplay();
   const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
 
   const [loadingId, setLoadingId] = useState<string | null>(null);
-  const [volume, setVolume] = useState(0.8);
   const [subtitle, setSubtitle] = useState("");
 
   const selected = useMemo(() => SOUNDS.find((s) => s.id === freeplayCategoryId) ?? null, [freeplayCategoryId]);
@@ -65,15 +54,9 @@ export default function HomePage() {
       await ensureEngine();
       setSubtitle(pick(entry.subtitles));
       await playFreeplay(entry.id, entry.phase);
-      setMasterVolume(volume);
     } finally {
       setLoadingId(null);
     }
-  };
-
-  const handleVolumeChange = (v: number) => {
-    setVolume(v);
-    setMasterVolume(v);
   };
 
   const accent = selected?.accent ?? "#8b8b93";
@@ -149,23 +132,7 @@ export default function HomePage() {
           {freeplayPlaying ? "❚❚" : "▶"}
         </button>
 
-        <div className="ml-2 flex flex-1 items-center gap-2">
-          <span className="text-muted">
-            <VolumeIcon />
-          </span>
-          <input
-            type="range"
-            name="masterVolume"
-            aria-label="音量"
-            min={0}
-            max={1}
-            step={0.01}
-            value={volume}
-            onChange={(e) => handleVolumeChange(Number(e.target.value))}
-            className="subtle-slider w-full"
-            style={{ color: accent }}
-          />
-        </div>
+        <VolumeSlider value={masterVolume} onChange={setMasterVolume} accentColor={accent} className="ml-2 flex-1" />
       </div>
     </div>
   );

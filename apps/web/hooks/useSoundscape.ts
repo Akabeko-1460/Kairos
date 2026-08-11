@@ -14,10 +14,12 @@ export function useSoundscape() {
   const switchToTimerMode = useSoundscapeRuntime((s) => s.switchToTimerMode);
   const engineReady = useSoundscapeRuntime((s) => s.engineReady);
   const debugInfo = useSoundscapeRuntime((s) => s.debugInfo);
+  const masterVolume = useSoundscapeRuntime((s) => s.masterVolume);
+  const setMasterVolume = useSoundscapeRuntime((s) => s.setMasterVolume);
 
   useEffect(() => {
     switchToTimerMode();
   }, [switchToTimerMode]);
 
-  return { ensureEngine, engineReady, debugInfo };
+  return { ensureEngine, engineReady, debugInfo, masterVolume, setMasterVolume };
 }

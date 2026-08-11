@@ -4,9 +4,10 @@ import { FocusThemeSelector } from "@/components/FocusThemeSelector";
 import { PresetSelector } from "@/components/PresetSelector";
 import { RoundIndicator } from "@/components/RoundIndicator";
 import { TimerRing } from "@/components/TimerRing";
+import { VolumeSlider } from "@/components/VolumeSlider";
 import { useNow } from "@/hooks/useNow";
 import { useSoundscape } from "@/hooks/useSoundscape";
-import { useTaskListStore } from "@/hooks/useTaskList";
+import { useTaskListStore, type TaskItem } from "@/hooks/useTaskList";
 import { useTimerStore } from "@/hooks/useTimer";
 import { useBackgroundArtStore } from "@/lib/backgroundArtStore";
 import { FOCUS_SOUND_THEMES } from "@/lib/soundThemes";
@@ -20,6 +21,90 @@ const buttonMotion = { whileHover: { scale: 1.04 }, whileTap: { scale: 0.95 } } 
 // 固定のアクセントカラーは break 用だけ残す。GeometricVisualizer は canvas に直接色を描くので
 // CSS 変数ではなく実 hex 値を渡す。
 const BREAK_ACCENT_HEX = "#3fae8e";
+
+// タスクリストの1列目に確保しておく行数。ここまでは増減してもPRESET/SOUNDの位置が動かない。
+const MAIN_TASK_ROWS = 6;
+// 1行分の高さ（テキスト行 + チェックボックス）の目安。gap-1.5 分を含めて6行ぶんの最小高さを計算する。
+const TASK_ROW_HEIGHT_REM = 1.75;
+const TASK_ROW_GAP_REM = 0.375;
+const TASK_LIST_MIN_HEIGHT = `${MAIN_TASK_ROWS * TASK_ROW_HEIGHT_REM + (MAIN_TASK_ROWS - 1) * TASK_ROW_GAP_REM}rem`;
+
+interface TaskRowProps {
+  item: TaskItem;
+  /** 7個目以降の折り返し列。文字サイズと当たり判定を一回り小さくする。 */
+  compact: boolean;
+  onToggle: () => void;
+  onRemove: () => void;
+}
+
+function TaskRow({ item, compact, onToggle, onRemove }: TaskRowProps) {
+  return (
+    <motion.li
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, height: 0 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className={`group flex items-center gap-2 ${compact ? "text-xs" : "text-sm"}`}
+    >
+      {/*
+        チェックボックスとタスク文をまとめて relative コンテナに入れ、完了時の
+        取り消し線をチェックボックスも含めて一直線に引けるようにする
+        （文字だけの text-decoration:line-through だとチェックボックスは貫通しない）。
+      */}
+      <span className="relative flex flex-1 items-center gap-2 overflow-hidden">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-pressed={item.done}
+          aria-label={item.done ? `${item.text} を未完了に戻す` : `${item.text} を完了にする`}
+          className={`flex shrink-0 items-center justify-center rounded border border-white/70 ${
+            compact ? "h-3.5 w-3.5" : "h-4 w-4"
+          }`}
+        >
+          {item.done && (
+            <svg
+              width={compact ? 8 : 10}
+              height={compact ? 8 : 10}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              strokeWidth={3}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+        </button>
+        <span className={`truncate ${item.done ? "text-muted/50" : "text-foreground"}`}>{item.text}</span>
+        <motion.span
+          aria-hidden
+          className="pointer-events-none absolute left-0 top-1/2 h-px bg-muted/60"
+          style={{ transformOrigin: "left" }}
+          initial={false}
+          animate={{ width: item.done ? "100%" : "0%" }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+        />
+      </span>
+      {/*
+        タスク3件目の要望：×が押しにくいので少し大きくする。文字サイズを上げつつ、
+        p-1/-m-1 で見た目の位置・行間は変えずに当たり判定だけ広げる。
+      */}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`${item.text} を削除`}
+        className={`-m-1 shrink-0 rounded p-1 leading-none transition-colors ${compact ? "text-sm" : "text-base"} ${
+          item.done
+            ? "text-red-400 hover:text-red-300"
+            : "text-muted/0 group-hover:text-muted/60 hover:!text-foreground"
+        }`}
+      >
+        ×
+      </button>
+    </motion.li>
+  );
+}
 
 function formatMmSs(ms: number): string {
   const totalSeconds = Math.ceil(ms / 1000);
@@ -52,7 +137,7 @@ export default function PomodoroPage() {
   const setTaskHeadline = useTimerStore((s) => s.setTaskHeadline);
   const changePreset = useTimerStore((s) => s.changePreset);
 
-  const { ensureEngine, engineReady } = useSoundscape();
+  const { ensureEngine, engineReady, masterVolume, setMasterVolume } = useSoundscape();
   const taskItems = useTaskListStore((s) => s.items);
   const addTaskItem = useTaskListStore((s) => s.addItem);
   const removeTaskItem = useTaskListStore((s) => s.removeItem);
@@ -107,6 +192,9 @@ export default function PomodoroPage() {
   };
 
   const handleSelectPreset = (preset: PomodoroPreset) => changePreset(preset);
+
+  const primaryTaskItems = taskItems.slice(0, MAIN_TASK_ROWS);
+  const overflowTaskItems = taskItems.slice(MAIN_TASK_ROWS);
 
   // Enter で確定したタスクを箇条書きリストに追加し、入力欄（taskHeadline を下書きとして流用）は空にする。
   const handleAddTaskKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
@@ -222,79 +310,43 @@ export default function PomodoroPage() {
               className="w-full border-b border-border bg-transparent px-1 py-2 text-center text-sm text-foreground placeholder:text-muted/50 focus:border-foreground focus:outline-none lg:text-left"
             />
 
-            {taskItems.length > 0 && (
-              <ul className="mt-3 flex flex-col gap-1.5">
+            {/*
+              タスクが0件のときも含めて常に6行分の高さを確保しておく。0→1件目は箇条書きが
+              出現するだけで済むが、この div ごと出し分けると2〜6件目の追加でも高さが変わって
+              しまい、PRESET/SOUNDセクションの位置が動いてしまうため常時レンダーする。
+            */}
+            <div className="mt-3 flex items-start gap-4">
+              <ul className="flex w-full flex-none flex-col gap-1.5" style={{ minHeight: TASK_LIST_MIN_HEIGHT }}>
                 <AnimatePresence initial={false}>
-                  {taskItems.map((item) => (
-                    <motion.li
+                  {primaryTaskItems.map((item) => (
+                    <TaskRow
                       key={item.id}
-                      initial={{ opacity: 0, y: -6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.25, ease: "easeOut" }}
-                      className="group flex items-center justify-center gap-2 text-sm lg:justify-start"
-                    >
-                      {/*
-                        チェックボックスとタスク文をまとめて relative コンテナに入れ、完了時の
-                        取り消し線をチェックボックスも含めて一直線に引けるようにする
-                        （文字だけの text-decoration:line-through だとチェックボックスは貫通しない）。
-                      */}
-                      <span className="relative flex flex-1 items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleTaskItem(item.id)}
-                          aria-pressed={item.done}
-                          aria-label={item.done ? `${item.text} を未完了に戻す` : `${item.text} を完了にする`}
-                          className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-white/70"
-                        >
-                          {item.done && (
-                            <svg
-                              width={10}
-                              height={10}
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="white"
-                              strokeWidth={3}
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </button>
-                        <span
-                          className={
-                            item.done ? "flex-1 text-center text-muted/50 lg:text-left" : "flex-1 text-center text-foreground lg:text-left"
-                          }
-                        >
-                          {item.text}
-                        </span>
-                        <motion.span
-                          aria-hidden
-                          className="pointer-events-none absolute left-0 top-1/2 h-px bg-muted/60"
-                          style={{ transformOrigin: "left" }}
-                          initial={false}
-                          animate={{ width: item.done ? "100%" : "0%" }}
-                          transition={{ duration: 0.2, ease: "easeOut" }}
-                        />
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeTaskItem(item.id)}
-                        aria-label={`${item.text} を削除`}
-                        className={
-                          item.done
-                            ? "shrink-0 text-xs text-red-400 transition-colors hover:text-red-300"
-                            : "shrink-0 text-xs text-muted/0 transition-colors group-hover:text-muted/60 hover:!text-foreground"
-                        }
-                      >
-                        ×
-                      </button>
-                    </motion.li>
+                      item={item}
+                      compact={false}
+                      onToggle={() => toggleTaskItem(item.id)}
+                      onRemove={() => removeTaskItem(item.id)}
+                    />
                   ))}
                 </AnimatePresence>
               </ul>
-            )}
+
+              {overflowTaskItems.length > 0 && (
+                // 7個目以降は1列目の半分の幅で、さらに右の列に積んでいく。
+                <ul className="flex w-1/2 flex-none flex-col gap-1">
+                  <AnimatePresence initial={false}>
+                    {overflowTaskItems.map((item) => (
+                      <TaskRow
+                        key={item.id}
+                        item={item}
+                        compact
+                        onToggle={() => toggleTaskItem(item.id)}
+                        onRemove={() => removeTaskItem(item.id)}
+                      />
+                    ))}
+                  </AnimatePresence>
+                </ul>
+              )}
+            </div>
           </div>
 
           {isIdle && (
@@ -311,6 +363,14 @@ export default function PomodoroPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/*
+        Start前でもタイマー実行中でも音量を調整できるよう、Homeと同じ音量バーを
+        右下に常設する（isIdle等の条件で出し分けない）。
+      */}
+      <div className="fixed bottom-8 right-8 z-10 w-48">
+        <VolumeSlider value={masterVolume} onChange={setMasterVolume} accentColor={accent} />
       </div>
     </div>
   );
