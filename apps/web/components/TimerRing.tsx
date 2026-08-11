@@ -7,7 +7,7 @@ interface TimerRingProps {
   accentColor: string;
 }
 
-const SIZE = 280;
+const SIZE = 340;
 const STROKE = 10;
 const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -40,7 +40,7 @@ export function TimerRing({ progress, label, timeLabel, accentColor }: TimerRing
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-        <span className="tabular-nums text-5xl font-light">{timeLabel}</span>
+        <span className="tabular-nums text-6xl font-light">{timeLabel}</span>
         <span className="text-xs tracking-[0.3em] text-muted">{label}</span>
       </div>
     </div>

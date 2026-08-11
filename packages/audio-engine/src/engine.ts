@@ -73,15 +73,27 @@ export class SoundscapeEngine {
     this.pack = pack;
   }
 
-  /** フェーズ開始。seed で音の展開を決定的にする。前のフェーズが無い最初の1回のみ使う。 */
+  /** フェーズ開始。seed で音の展開を決定的にする。前のフェーズが無い最初の1回のみ使う想定。 */
   async begin(phase: EnginePhase, seed: number): Promise<void> {
     this.assertReady();
+
+    if (this.currentGraph) {
+      // 想定外の呼び出し順（例: Home のフリー再生中に Pomodoro を Start した等）でも
+      // 無音を挟まず・古いグラフをリークさせずに済むよう、クロスフェードへ委譲する。
+      await this.transitionTo(phase, seed, 3);
+      return;
+    }
+
     const graph = await this.buildGraph(phase, seed);
     this.currentGraph = graph;
     this.currentPhase = phase;
     this.lastT = 0;
 
     const now = this.ctx!.currentTime;
+    // stop() 等でマスターゲインが下がったまま残っている可能性があるため、
+    // 現在値からのランプで安全に復元する（0起点の等パワーカーブだと段差が出るため使わない）。
+    this.masterGain!.gain.cancelScheduledValues(now);
+    this.masterGain!.gain.linearRampToValueAtTime(1, now + 0.6);
     // 最初の1回はクロスフェード相手がいないので、短いフェードインのみ。
     graph.scheduleMasterFade(equalPowerCurve(true), now, 1.5);
   }
@@ -151,12 +163,19 @@ export class SoundscapeEngine {
     const now = this.ctx.currentTime;
     this.masterGain.gain.cancelScheduledValues(now);
     this.masterGain.gain.setValueCurveAtTime(equalPowerCurve(false), now, fadeOutSec);
+
+    // グラフの参照はここで即座に手放す。フェード完了を待ってから null にすると、
+    // フェード中に begin() が呼ばれたときに「まだ何か鳴っている」と誤認してしまう
+    // （begin() は !this.currentGraph でクロスフェード要否を判定するため）。
+    const graphsToDispose = [this.currentGraph, this.outgoingGraph].filter(
+      (g): g is PhaseGraph => g !== null,
+    );
+    this.currentGraph = null;
+    this.outgoingGraph = null;
+    this.currentPhase = null;
+
     setTimeout(() => {
-      this.currentGraph?.dispose();
-      this.outgoingGraph?.dispose();
-      this.currentGraph = null;
-      this.outgoingGraph = null;
-      this.currentPhase = null;
+      for (const g of graphsToDispose) g.dispose();
     }, fadeOutSec * 1000);
   }
 

@@ -1,205 +1,179 @@
 "use client";
 
-import { DebugPanel } from "@/components/DebugPanel";
-import { RoundIndicator } from "@/components/RoundIndicator";
-import { TimerRing } from "@/components/TimerRing";
-import { useNow } from "@/hooks/useNow";
-import { useSoundscape } from "@/hooks/useSoundscape";
-import { useTimerStore } from "@/hooks/useTimer";
-import { CLASSIC_PRESET, DEEP_PRESET, progress, remainingMs } from "@kairos/core";
-import { useState } from "react";
+import { SoundIcon, type IconVariant } from "@/components/SoundIcon";
+import { useFreeplay } from "@/hooks/useFreeplay";
+import type { EnginePhase } from "@kairos/audio-engine";
+import { useMemo, useState } from "react";
 
-const FOCUS_ACCENT = "var(--focus-accent)";
-const BREAK_ACCENT = "var(--break-accent)";
+const FOCUS_ACCENT = "#4c6ef5";
+const BREAK_ACCENT = "#3fae8e";
 
-function formatMmSs(ms: number): string {
-  const totalSeconds = Math.ceil(ms / 1000);
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+const FOCUS_SUBTITLES = ["Quiet Momentum", "Deep Work Flow", "Steady Attention", "Morning Clarity"];
+const BREAK_SUBTITLES = ["Slow Exhale", "Soft Reset", "Gentle Unwind", "Afternoon Drift"];
+
+interface SoundEntry {
+  id: "focus" | "break";
+  phase: EnginePhase;
+  label: string;
+  icon: IconVariant;
+  accent: string;
 }
 
-function phaseLabel(phase: string): string {
-  switch (phase) {
-    case "focus":
-      return "FOCUS";
-    case "shortBreak":
-    case "longBreak":
-      return "BREAK";
-    case "completed":
-      return "COMPLETE";
-    default:
-      return "READY";
-  }
+const UNLOCKED_SOUNDS: SoundEntry[] = [
+  { id: "focus", phase: "focus", label: "Focus", icon: "focus", accent: FOCUS_ACCENT },
+  { id: "break", phase: "shortBreak", label: "Break", icon: "break", accent: BREAK_ACCENT },
+];
+
+// 将来のサウンドパック拡張用のプレースホルダー。中身は未定なので鍵アイコンのみ表示する
+// （docs/PHASE0_SPIKES.md 等で言及の通り、現状は Focus/Break の1パックのみ実装済み）。
+const LOCKED_ICONS: IconVariant[] = [
+  "crescent",
+  "prism",
+  "orbit",
+  "dots",
+  "leaf",
+  "droplets",
+  "waves",
+  "flow",
+  "peaks",
+  "spiral",
+];
+
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
-export default function Home() {
-  const state = useTimerStore((s) => s.state);
-  const start = useTimerStore((s) => s.start);
-  const pause = useTimerStore((s) => s.pause);
-  const resume = useTimerStore((s) => s.resume);
-  const skip = useTimerStore((s) => s.skip);
-  const reset = useTimerStore((s) => s.reset);
-  const setTaskHeadline = useTimerStore((s) => s.setTaskHeadline);
-  const changePreset = useTimerStore((s) => s.changePreset);
+export default function HomePage() {
+  const {
+    freeplayPhase,
+    freeplayPlaying,
+    ensureEngine,
+    playFreeplay,
+    toggleFreeplayPause,
+    regenerateFreeplay,
+    stopFreeplay,
+    setMasterVolume,
+  } = useFreeplay();
 
-  const { ensureEngine, engineReady, debugInfo } = useSoundscape();
-  const now = useNow();
-  const [showDebug, setShowDebug] = useState(false);
-  const [starting, setStarting] = useState(false);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [volume, setVolume] = useState(0.8);
+  const [subtitle, setSubtitle] = useState(pick(FOCUS_SUBTITLES));
 
-  const isIdle = state.phase === "idle" || state.phase === "completed";
-  const isBreakPhase = state.phase === "shortBreak" || state.phase === "longBreak";
-  const accent = isBreakPhase ? BREAK_ACCENT : FOCUS_ACCENT;
+  const selected = useMemo(
+    () => UNLOCKED_SOUNDS.find((s) => s.phase === freeplayPhase) ?? null,
+    [freeplayPhase],
+  );
 
-  const handleStart = async () => {
-    setStarting(true);
+  const handleSelect = async (entry: SoundEntry) => {
+    if (freeplayPhase === entry.phase) {
+      // 同じ音をもう一度選んだら一時停止/再開のトグルにする
+      toggleFreeplayPause();
+      return;
+    }
+    setLoadingId(entry.id);
     try {
-      // AudioContext の生成/resume はユーザー操作起点でなければならない（ADR-003）。
       await ensureEngine();
-      start();
+      setSubtitle(pick(entry.phase === "focus" ? FOCUS_SUBTITLES : BREAK_SUBTITLES));
+      await playFreeplay(entry.phase);
+      setMasterVolume(volume);
     } finally {
-      setStarting(false);
+      setLoadingId(null);
     }
   };
 
-  // リロード直後は @kairos/core のタイマー状態は復元されるが、AudioContext は復元できない
-  // （自動再生ポリシー、ADR-003）。実行中セッションなのにエンジン未初期化のときはここで拾う。
-  const handleResumeAudio = async () => {
-    setStarting(true);
-    try {
-      await ensureEngine();
-    } finally {
-      setStarting(false);
-    }
+  const handleVolumeChange = (v: number) => {
+    setVolume(v);
+    setMasterVolume(v);
   };
+
+  const accent = selected?.accent ?? "var(--muted)";
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-10 px-6 py-16">
-      <header className="flex w-full max-w-sm items-center justify-between text-sm text-muted">
-        <span className="font-medium text-foreground">Kairos</span>
-        <button
-          type="button"
-          onClick={() => setShowDebug((v) => !v)}
-          className="text-[10px] tracking-widest text-muted/60 hover:text-muted"
-        >
-          {showDebug ? "HIDE DEBUG" : "DEBUG"}
-        </button>
-      </header>
-
-      <TimerRing
-        progress={progress(state, now)}
-        label={phaseLabel(state.phase)}
-        timeLabel={formatMmSs(remainingMs(state, now))}
-        accentColor={accent}
-      />
-
-      <RoundIndicator currentRound={state.currentRound} totalRounds={state.totalRounds} accentColor={accent} />
-
-      <input
-        type="text"
-        value={state.taskHeadline}
-        onChange={(e) => setTaskHeadline(e.target.value)}
-        placeholder="このセッションで取り組むタスク"
-        className="w-full max-w-xs border-b border-border bg-transparent px-1 py-2 text-center text-sm text-foreground placeholder:text-muted/50 focus:border-foreground focus:outline-none"
-      />
-
-      <div className="flex items-center gap-4">
-        {isIdle ? (
-          <button
-            type="button"
-            onClick={handleStart}
-            disabled={starting}
-            className="rounded-full px-8 py-3 text-sm font-medium text-background disabled:opacity-50"
-            style={{ backgroundColor: accent }}
-          >
-            {starting ? "準備中…" : "Start"}
-          </button>
-        ) : !engineReady ? (
-          <>
-            <button
-              type="button"
-              onClick={handleResumeAudio}
-              disabled={starting}
-              className="rounded-full px-8 py-3 text-sm font-medium text-background disabled:opacity-50"
-              style={{ backgroundColor: accent }}
-            >
-              {starting ? "再開中…" : "Resume Audio"}
-            </button>
-            <button
-              type="button"
-              onClick={reset}
-              className="rounded-full border border-border px-6 py-2.5 text-sm font-medium text-foreground"
-            >
-              Reset
-            </button>
-          </>
-        ) : (
-          <>
-            {state.pausedAt ? (
-              <button
-                type="button"
-                onClick={resume}
-                className="rounded-full px-6 py-2.5 text-sm font-medium text-background"
-                style={{ backgroundColor: accent }}
-              >
-                Resume
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={pause}
-                className="rounded-full border border-border px-6 py-2.5 text-sm font-medium text-foreground"
-              >
-                Pause
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={skip}
-              className="rounded-full border border-border px-6 py-2.5 text-sm font-medium text-foreground"
-            >
-              Skip
-            </button>
-            <button
-              type="button"
-              onClick={reset}
-              className="rounded-full border border-border px-6 py-2.5 text-sm font-medium text-foreground"
-            >
-              Reset
-            </button>
-          </>
-        )}
+    <div className="grid-bg relative flex flex-1 flex-col items-center justify-between px-8 py-14">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+        <h1 className="text-3xl font-medium text-foreground">{selected ? selected.label : "Kairos"}</h1>
+        <p className="text-sm text-muted">
+          {selected ? subtitle : "集中と休憩に合わせて生成されるサウンドスケープを選んでください"}
+        </p>
       </div>
 
-      {isIdle && (
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => changePreset(CLASSIC_PRESET)}
-            className="rounded-full border px-4 py-1.5 text-xs"
-            style={{
-              borderColor: state.preset.id === "classic" ? accent : "var(--border)",
-              color: state.preset.id === "classic" ? accent : "var(--muted)",
-            }}
-          >
-            {CLASSIC_PRESET.label}
-          </button>
-          <button
-            type="button"
-            onClick={() => changePreset(DEEP_PRESET)}
-            className="rounded-full border px-4 py-1.5 text-xs"
-            style={{
-              borderColor: state.preset.id === "deep" ? accent : "var(--border)",
-              color: state.preset.id === "deep" ? accent : "var(--muted)",
-            }}
-          >
-            {DEEP_PRESET.label}
-          </button>
-        </div>
-      )}
+      <div className="mb-10 flex max-w-2xl flex-wrap items-center justify-center gap-4">
+        {UNLOCKED_SOUNDS.map((entry) => {
+          const active = freeplayPhase === entry.phase;
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => handleSelect(entry)}
+              disabled={loadingId === entry.id}
+              aria-label={entry.label}
+              className="flex h-14 w-14 items-center justify-center rounded-full border transition-colors disabled:opacity-50"
+              style={{
+                borderColor: active ? entry.accent : "var(--border)",
+                color: active ? entry.accent : "var(--muted)",
+                backgroundColor: active ? `${entry.accent}1a` : "transparent",
+              }}
+            >
+              <SoundIcon variant={entry.icon} size={24} />
+            </button>
+          );
+        })}
 
-      {showDebug && <DebugPanel debugInfo={debugInfo} wallClockNow={now} />}
+        {LOCKED_ICONS.map((icon) => (
+          <span
+            key={icon}
+            className="flex h-14 w-14 items-center justify-center rounded-full border border-border text-muted/50"
+            title="Coming soon"
+          >
+            <SoundIcon variant={icon} locked size={22} />
+          </span>
+        ))}
+      </div>
+
+      <div className="flex w-full max-w-md items-center justify-center gap-4">
+        <button
+          type="button"
+          onClick={() => selected && toggleFreeplayPause()}
+          disabled={!selected}
+          aria-label={freeplayPlaying ? "一時停止" : "再生"}
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-border text-foreground disabled:opacity-30"
+        >
+          {freeplayPlaying ? "❚❚" : "▶"}
+        </button>
+        <button
+          type="button"
+          onClick={() => selected && regenerateFreeplay()}
+          disabled={!selected}
+          aria-label="別のバリエーションを生成"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-border text-foreground disabled:opacity-30"
+        >
+          ⟳
+        </button>
+        <button
+          type="button"
+          onClick={() => selected && stopFreeplay()}
+          disabled={!selected}
+          aria-label="停止"
+          className="flex h-11 w-11 items-center justify-center rounded-full border border-border text-foreground disabled:opacity-30"
+        >
+          ■
+        </button>
+
+        <div className="ml-2 flex flex-1 items-center gap-2">
+          <span className="text-muted">🔊</span>
+          <input
+            type="range"
+            name="masterVolume"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            onChange={(e) => handleVolumeChange(Number(e.target.value))}
+            className="w-full accent-current"
+            style={{ color: accent }}
+          />
+        </div>
+      </div>
     </div>
   );
 }

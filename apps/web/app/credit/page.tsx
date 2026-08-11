@@ -1,0 +1,102 @@
+const REFERENCES = [
+  {
+    title: "Endel — Technology",
+    note: "サウンドスケープ生成エンジン「Endel Pacific」の構造（Inputs / Core AI Logic / Sound generation / Output）についての一次情報。",
+    url: "https://endel.io/technology",
+  },
+  {
+    title: "Endel — Science",
+    note: "Focus/Relax/Sleep それぞれの音響設計原則（一定のビート、自然音によるマスキング等）の根拠。",
+    url: "https://endel.io/science",
+  },
+  {
+    title: "Endel — Focus Timer",
+    note: "ポモドーロ・テクニックに基づくシナリオ機能。本プロジェクトの直接の参照元。",
+    url: "https://endel.io/focus",
+  },
+  {
+    title: "Arctop et al., 2021, Frontiers in Computational Neuroscience",
+    note: "Endelのサウンドスケープが、プレイリストや無音と比較して集中の持続性を高めると報告する査読付き研究。",
+    url: "https://www.frontiersin.org/articles/10.3389/fncom.2021.760561/full",
+  },
+  {
+    title: "Apple Developer — Spotlight on: Spatial Audio",
+    note: "EndelがCore Audio / AVFoundationを用いたネイティブ実装であることの一次情報。技術選定（ADR-002）の根拠。",
+    url: "https://developer.apple.com/news/?id=0vz78ua8",
+  },
+  {
+    title: "TechCrunch — Endel and Sony partnership",
+    note: "「ステムベースのサウンドスケープを、アルゴリズムが組み立てる」というエンジンの実体についての共同創業者インタビュー。",
+    url: "https://techcrunch.com/2022/05/20/endel-sony-partnership/",
+  },
+];
+
+export default function CreditPage() {
+  return (
+    <div className="flex flex-1 justify-center px-8 py-16">
+      <div className="flex w-full max-w-2xl flex-col gap-14">
+        <section className="flex flex-col gap-4">
+          <h1 className="text-2xl font-medium text-foreground">Kairos について</h1>
+          <p className="text-sm leading-7 text-muted">
+            Kairos は、集中フェーズと休憩フェーズに合わせて自動生成されるサウンドスケープを組み合わせた
+            ポモドーロタイマーです。機械的に区切られた時間（クロノス）を、質の高い集中と回復のための
+            意味ある時間（カイロス）へと変えることを目指しています。
+          </p>
+          <p className="text-sm leading-7 text-muted">
+            集中フェーズでは注意を引かずに覚醒度を保つサウンド、休憩フェーズでは副交感神経を優位にする
+            サウンドが自動で切り替わり、フェーズ内でも時間の経過に応じて音がゆっくり変化し続けます。
+            同じ設定で実行しても、毎回わずかに違う音の展開になります。
+          </p>
+        </section>
+
+        <section className="flex flex-col gap-4">
+          <h2 className="text-sm font-medium tracking-wide text-foreground">使い方</h2>
+          <ul className="flex flex-col gap-3 text-sm leading-7 text-muted">
+            <li>
+              <span className="text-foreground">Home</span> —
+              サウンドスケープを選んで、ポモドーロと関係なく自由に流し続けられます。
+            </li>
+            <li>
+              <span className="text-foreground">Pomodoro</span> —
+              プリセット（25/5・50/10、または独自のカスタム設定）を選んでセッションを開始します。
+              集中と休憩が自動で交互に切り替わり、フェーズ切替は音がクロスフェードして無音を挟みません。
+            </li>
+          </ul>
+        </section>
+
+        <section className="flex flex-col gap-4">
+          <h2 className="text-sm font-medium tracking-wide text-foreground">参考文献・記事</h2>
+          <p className="text-xs leading-6 text-muted/80">
+            Kairos は Endel の「機能性サウンドスケープ」という設計思想を参考にした独自実装です。
+            Endel の音源・ロゴ・商標・UI意匠は一切使用していません。詳しい調査記録は
+            リポジトリの <code className="rounded bg-surface px-1 py-0.5 text-[11px]">docs/01_ENDEL_RESEARCH.md</code> にあります。
+          </p>
+          <ul className="flex flex-col gap-4">
+            {REFERENCES.map((ref) => (
+              <li key={ref.url} className="border-l border-border pl-4">
+                <a
+                  href={ref.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground"
+                >
+                  {ref.title}
+                </a>
+                <p className="mt-1 text-xs leading-6 text-muted">{ref.note}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="flex flex-col gap-4 pb-8">
+          <h2 className="text-sm font-medium tracking-wide text-foreground">技術スタック</h2>
+          <p className="text-sm leading-7 text-muted">
+            Next.js（静的書き出し）・TypeScript・素の Web Audio API・Zustand・Tailwind CSS。
+            音源は現時点では開発用の合成音のプレースホルダーです。ライセンス台帳は
+            <code className="rounded bg-surface px-1 py-0.5 text-[11px]"> docs/ASSET_LICENSES.md</code> で管理しています。
+          </p>
+        </section>
+      </div>
+    </div>
+  );
+}
