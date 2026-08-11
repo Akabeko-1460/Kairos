@@ -329,9 +329,11 @@ export default function PomodoroPage() {
           {/*
             音量バーはSOUNDセクションの直後に置く。isIdleで出し分けず常時表示することで、
             Start前でもタイマー実行中でも操作できるようにする（PRESET/SOUNDが隠れているときは
-            自然にその位置へ繰り上がる）。右カラム幅いっぱいだと間延びするので、幅は短めに絞る。
+            自然にその位置へ繰り上がる）。
+            幅はHome画面の音量バーと同じにする（Home側は max-w-xs(320px) の行から再生ボタン
+            44px・gap-4(16px)・ml-2(8px) を差し引いた 252px がスライダーの実サイズ）。
           */}
-          <div className="w-40">
+          <div className="w-[252px]">
             <VolumeSlider value={masterVolume} onChange={setMasterVolume} accentColor={accent} />
           </div>
         </div>
