@@ -1,5 +1,6 @@
 "use client";
 
+import { useFreeplay } from "@/hooks/useFreeplay";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -12,6 +13,14 @@ const TABS = [
 
 export function TopNav() {
   const pathname = usePathname();
+  const { mode, stopFreeplay } = useFreeplay();
+
+  // Home タブは「最初の Kairos 表示に戻る」ボタンとしても機能させる。
+  // Pomodoro のタイマー再生中（mode === "timer"）まで止めてしまうと音が切れてしまうため、
+  // Home画面の自由再生（freeplay）が鳴っているときだけリセットする。
+  const handleHomeClick = () => {
+    if (mode === "freeplay") stopFreeplay();
+  };
 
   return (
     <header className="flex w-full items-center justify-center px-8 pb-4 pt-8">
@@ -19,7 +28,12 @@ export function TopNav() {
         {TABS.map((tab) => {
           const active = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
           return (
-            <Link key={tab.href} href={tab.href} className="relative px-1 py-1">
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className="relative px-1 py-1"
+              onClick={tab.href === "/" ? handleHomeClick : undefined}
+            >
               {/* うっすらもわっと白く光るホバーグロー。ぼかした白い光暈をテキストの後ろに重ねる。 */}
               <motion.span
                 aria-hidden

@@ -123,7 +123,12 @@ export default function HomePage() {
                     transition={{ type: "spring", stiffness: 400, damping: 32 }}
                   />
                 )}
-                <span className="relative">
+                {/*
+                  この span がインライン(非flex)のままだと、中の SVG がテキストのベースラインに
+                  乗ってしまい、行の下に見えないディセンダー分の余白ができてアイコンが心持ち
+                  上にズレて見える。flex にしてベースライン計算を経由させないことで解消する。
+                */}
+                <span className="relative flex">
                   <SoundIcon variant={entry.icon} size={24} />
                 </span>
               </motion.button>

@@ -1,6 +1,5 @@
 "use client";
 
-import { DebugPanel } from "@/components/DebugPanel";
 import { FocusThemeSelector } from "@/components/FocusThemeSelector";
 import { PresetSelector } from "@/components/PresetSelector";
 import { RoundIndicator } from "@/components/RoundIndicator";
@@ -17,10 +16,9 @@ import { useEffect, useState, type KeyboardEvent } from "react";
 
 const buttonMotion = { whileHover: { scale: 1.04 }, whileTap: { scale: 0.95 } } as const;
 
-const FOCUS_ACCENT = "var(--focus-accent)";
-const BREAK_ACCENT = "var(--break-accent)";
-// GeometricVisualizer は canvas に直接色を描くので CSS 変数ではなく実 hex 値を渡す。
-// Focus フェーズ側は選択中のサウンドテーマ（focusTheme.accent）を使うため、break 用のみ残す。
+// Focus フェーズの配色は選択中のサウンドテーマ（focusTheme.accent）に委ねるため、
+// 固定のアクセントカラーは break 用だけ残す。GeometricVisualizer は canvas に直接色を描くので
+// CSS 変数ではなく実 hex 値を渡す。
 const BREAK_ACCENT_HEX = "#3fae8e";
 
 function formatMmSs(ms: number): string {
@@ -54,22 +52,24 @@ export default function PomodoroPage() {
   const setTaskHeadline = useTimerStore((s) => s.setTaskHeadline);
   const changePreset = useTimerStore((s) => s.changePreset);
 
-  const { ensureEngine, engineReady, debugInfo } = useSoundscape();
+  const { ensureEngine, engineReady } = useSoundscape();
   const taskItems = useTaskListStore((s) => s.items);
   const addTaskItem = useTaskListStore((s) => s.addItem);
   const removeTaskItem = useTaskListStore((s) => s.removeItem);
+  const toggleTaskItem = useTaskListStore((s) => s.toggleItem);
   const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
   const now = useNow();
-  const [showDebug, setShowDebug] = useState(false);
   const [starting, setStarting] = useState(false);
   // Focus フェーズで鳴らす/描くサウンドテーマ。デフォルトは汎用的な "Work"。
   const [focusThemeId, setFocusThemeId] = useState<string>("work");
 
   const isIdle = state.phase === "idle" || state.phase === "completed";
   const isBreakPhase = state.phase === "shortBreak" || state.phase === "longBreak";
-  const accent = isBreakPhase ? BREAK_ACCENT : FOCUS_ACCENT;
 
   const focusTheme = FOCUS_SOUND_THEMES.find((t) => t.id === focusThemeId) ?? FOCUS_SOUND_THEMES[0]!;
+  // Start・Preset・サイクルインジケーターの配色も選択中のサウンドテーマに合わせる。
+  // 背景アートだけでなく、Focus フェーズを象徴する色そのものを差し替える。
+  const accent = isBreakPhase ? BREAK_ACCENT_HEX : focusTheme.accent;
 
   // 画面全体（ヘッダーも含む）で共有する背景アートに、このページの状態を反映する。
   // タイマーリングやボタンの配色（focus-accent/break-accent）は変えず、背景アートの
@@ -118,15 +118,12 @@ export default function PomodoroPage() {
 
   return (
     <div className="relative flex flex-1 items-center justify-center px-8 py-12">
-      <button
-        type="button"
-        onClick={() => setShowDebug((v) => !v)}
-        className="absolute right-8 top-6 z-10 text-[10px] tracking-widest text-muted/60 hover:text-muted"
-      >
-        {showDebug ? "HIDE DEBUG" : "DEBUG"}
-      </button>
-
-      <div className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-center lg:gap-20">
+      {/*
+        右カラムの先頭行（RoundIndicator）を左のタイマーリング上端に揃えるため、
+        行全体を items-start にする（items-center だと2カラムの高さの違いで中央合わせになり、
+        右カラムの方が上にズレて見えていた）。
+      */}
+      <div className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:items-start lg:justify-center lg:gap-20">
         <div className="flex flex-col items-center gap-8">
           <TimerRing
             progress={progress(state, now)}
@@ -211,7 +208,7 @@ export default function PomodoroPage() {
           </div>
         </div>
 
-        <div className="flex w-full max-w-sm flex-col items-center gap-8 lg:items-start lg:pt-4">
+        <div className="flex w-full max-w-sm flex-col items-center gap-8 lg:items-start">
           <RoundIndicator currentRound={state.currentRound} totalRounds={state.totalRounds} accentColor={accent} />
 
           <div className="w-full">
@@ -228,23 +225,68 @@ export default function PomodoroPage() {
             {taskItems.length > 0 && (
               <ul className="mt-3 flex flex-col gap-1.5">
                 <AnimatePresence initial={false}>
-                  {taskItems.map((item, index) => (
+                  {taskItems.map((item) => (
                     <motion.li
-                      key={`${index}-${item}`}
+                      key={item.id}
                       initial={{ opacity: 0, y: -6 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ duration: 0.25, ease: "easeOut" }}
-                      className="group flex items-center justify-center gap-2 text-sm text-foreground lg:justify-start"
+                      className="group flex items-center justify-center gap-2 text-sm lg:justify-start"
                     >
-                      {/* 白い点から始まる箇条書き。 */}
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white" />
-                      <span className="flex-1 text-center lg:text-left">{item}</span>
+                      {/*
+                        チェックボックスとタスク文をまとめて relative コンテナに入れ、完了時の
+                        取り消し線をチェックボックスも含めて一直線に引けるようにする
+                        （文字だけの text-decoration:line-through だとチェックボックスは貫通しない）。
+                      */}
+                      <span className="relative flex flex-1 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleTaskItem(item.id)}
+                          aria-pressed={item.done}
+                          aria-label={item.done ? `${item.text} を未完了に戻す` : `${item.text} を完了にする`}
+                          className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-white/70"
+                        >
+                          {item.done && (
+                            <svg
+                              width={10}
+                              height={10}
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="white"
+                              strokeWidth={3}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M5 13l4 4L19 7" />
+                            </svg>
+                          )}
+                        </button>
+                        <span
+                          className={
+                            item.done ? "flex-1 text-center text-muted/50 lg:text-left" : "flex-1 text-center text-foreground lg:text-left"
+                          }
+                        >
+                          {item.text}
+                        </span>
+                        <motion.span
+                          aria-hidden
+                          className="pointer-events-none absolute left-0 top-1/2 h-px bg-muted/60"
+                          style={{ transformOrigin: "left" }}
+                          initial={false}
+                          animate={{ width: item.done ? "100%" : "0%" }}
+                          transition={{ duration: 0.2, ease: "easeOut" }}
+                        />
+                      </span>
                       <button
                         type="button"
-                        onClick={() => removeTaskItem(index)}
-                        aria-label={`${item} を削除`}
-                        className="shrink-0 text-xs text-muted/0 transition-colors group-hover:text-muted/60 hover:!text-foreground"
+                        onClick={() => removeTaskItem(item.id)}
+                        aria-label={`${item.text} を削除`}
+                        className={
+                          item.done
+                            ? "shrink-0 text-xs text-red-400 transition-colors hover:text-red-300"
+                            : "shrink-0 text-xs text-muted/0 transition-colors group-hover:text-muted/60 hover:!text-foreground"
+                        }
                       >
                         ×
                       </button>
@@ -268,8 +310,6 @@ export default function PomodoroPage() {
               <FocusThemeSelector selectedId={focusThemeId} onSelect={setFocusThemeId} />
             </div>
           )}
-
-          {showDebug && <DebugPanel debugInfo={debugInfo} wallClockNow={now} />}
         </div>
       </div>
     </div>
