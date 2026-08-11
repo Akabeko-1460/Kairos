@@ -27,15 +27,20 @@ describe("transitions", () => {
     expect(isRunning(s)).toBe(true);
   });
 
-  it("focus -> shortBreak -> focus for non-multiple-of-4 rounds", () => {
+  it("focus -> shortBreak -> focus for non-multiple-of-4 rounds, no break after the final round", () => {
     const phases = runFullCycle(2);
-    // 各 focus の後に shortBreak が入り、totalRounds 到達後の break の直後に completed になる
-    expect(phases).toEqual(["focus", "shortBreak", "focus", "shortBreak", "completed"]);
+    // 最終ラウンド（2ラウンド目）の focus が終わったら、休憩を挟まず即 completed になる
+    expect(phases).toEqual(["focus", "shortBreak", "focus", "completed"]);
   });
 
-  it("every 4th round takes a longBreak, then completes at totalRounds", () => {
+  it("every 4th round takes a longBreak, but the final round skips its break entirely", () => {
     const phases = runFullCycle(4);
-    expect(phases).toEqual(["focus", "shortBreak", "focus", "shortBreak", "focus", "shortBreak", "focus", "longBreak", "completed"]);
+    expect(phases).toEqual(["focus", "shortBreak", "focus", "shortBreak", "focus", "shortBreak", "focus", "completed"]);
+  });
+
+  it("a single-round session has no break at all", () => {
+    const phases = runFullCycle(1);
+    expect(phases).toEqual(["focus", "completed"]);
   });
 
   it("skip is equivalent to advance", () => {

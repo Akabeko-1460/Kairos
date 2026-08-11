@@ -90,16 +90,21 @@ Lyria RealTime によるリアルタイム生成の実験 / 課金 / クラウ�
       │                    │
       │        complete() / skip()
       │                    ▼
+      │        最終ラウンド？ ─ Yes → [Completed] → [Idle]
+      │                    │
+      │                   No
+      │                    ▼
       │           [Break:Running] ──pause()──► [Break:Paused]
       │                    │
       │        complete() / skip()
       │                    ▼
-      │        ラウンド未達 → [Focus:Running]
-      └── reset() ── 全ラウンド完了 → [Completed] → [Idle]
+      └── reset() ── [Focus:Running]（次ラウンド）
 ```
 
 - `Focus` は `focus`、`Break` は `shortBreak` / `longBreak` に分岐
 - 4ラウンド目（= `roundsBeforeLongBreak` の倍数）完了後は `longBreak`
+- **最終ラウンドの `Focus` が終わったときは休憩を挟まず、そのまま `Completed` にする**
+  （最後の休憩はユーザーにとって無意味なため。`shortBreak`/`longBreak` いずれも同様）
 - **一時停止中は音もフェードアウトして停止する**（ポーズ中に鳴り続けると集中の合図として機能しなくなる）
 
 ---
