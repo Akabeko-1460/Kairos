@@ -1,12 +1,12 @@
 "use client";
 
-import { GeometricVisualizer } from "@/components/GeometricVisualizer";
 import { SoundIcon, type IconVariant } from "@/components/SoundIcon";
 import { useFreeplay } from "@/hooks/useFreeplay";
+import { useBackgroundArtStore } from "@/lib/backgroundArtStore";
 import type { VisualStyleId } from "@/lib/visualStyles";
 import type { EnginePhase } from "@kairos/audio-engine";
 import { AnimatePresence, motion } from "framer-motion";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 interface SoundEntry {
   id: string;
@@ -74,23 +74,45 @@ function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
+function VolumeIcon() {
+  return (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 10v4h4l5 4V6l-5 4H4Z" />
+      <path d="M16.5 9a4 4 0 0 1 0 6" />
+    </svg>
+  );
+}
+
 export default function HomePage() {
-  const {
-    freeplayCategoryId,
-    freeplayPlaying,
-    ensureEngine,
-    playFreeplay,
-    toggleFreeplayPause,
-    regenerateFreeplay,
-    stopFreeplay,
-    setMasterVolume,
-  } = useFreeplay();
+  const { freeplayCategoryId, freeplayPlaying, ensureEngine, playFreeplay, toggleFreeplayPause, setMasterVolume } =
+    useFreeplay();
+  const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
 
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [volume, setVolume] = useState(0.8);
   const [subtitle, setSubtitle] = useState("");
 
   const selected = useMemo(() => SOUNDS.find((s) => s.id === freeplayCategoryId) ?? null, [freeplayCategoryId]);
+
+  // 画面全体（ヘッダーも含む）で共有する背景アートに、このページの状態を反映する。
+  useEffect(() => {
+    setBackgroundArt({
+      active: freeplayPlaying,
+      styleId: selected?.visual ?? "starfield",
+      accentColor: selected?.accent ?? "#8b8b93",
+      holeRadiusRatio: 0,
+      seed: selected ? SOUNDS.indexOf(selected) + 1 : 0,
+    });
+  }, [selected, freeplayPlaying, setBackgroundArt]);
 
   const handleSelect = async (entry: SoundEntry) => {
     if (freeplayCategoryId === entry.id) {
@@ -117,15 +139,8 @@ export default function HomePage() {
   const accent = selected?.accent ?? "#8b8b93";
 
   return (
-    <div className="relative flex flex-1 flex-col items-center justify-between overflow-hidden px-8 py-14">
-      <GeometricVisualizer
-        active={freeplayPlaying}
-        accentColor={accent}
-        styleId={selected?.visual ?? "starfield"}
-        seed={selected ? SOUNDS.indexOf(selected) + 1 : 0}
-      />
-
-      <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3 text-center">
+    <div className="flex flex-1 flex-col items-center justify-between px-8 py-14">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
         <AnimatePresence mode="wait">
           <motion.div
             key={selected ? selected.id : "idle"}
@@ -142,7 +157,7 @@ export default function HomePage() {
         </AnimatePresence>
       </div>
 
-      <div className="relative z-10 mb-10 flex max-w-2xl flex-wrap items-center justify-center gap-5">
+      <div className="mb-10 flex max-w-2xl flex-wrap items-center justify-center gap-5">
         {SOUNDS.map((entry) => {
           const active = freeplayCategoryId === entry.id;
           return (
@@ -178,7 +193,7 @@ export default function HomePage() {
         })}
       </div>
 
-      <div className="relative z-10 flex w-full max-w-md items-center justify-center gap-4">
+      <div className="flex w-full max-w-xs items-center justify-center gap-4">
         <button
           type="button"
           onClick={() => selected && toggleFreeplayPause()}
@@ -188,27 +203,11 @@ export default function HomePage() {
         >
           {freeplayPlaying ? "❚❚" : "▶"}
         </button>
-        <button
-          type="button"
-          onClick={() => selected && regenerateFreeplay()}
-          disabled={!selected}
-          aria-label="別のバリエーションを生成"
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-border text-foreground disabled:opacity-30"
-        >
-          ⟳
-        </button>
-        <button
-          type="button"
-          onClick={() => selected && stopFreeplay()}
-          disabled={!selected}
-          aria-label="停止"
-          className="flex h-11 w-11 items-center justify-center rounded-full border border-border text-foreground disabled:opacity-30"
-        >
-          ■
-        </button>
 
-        <div className="ml-2 flex items-center gap-2">
-          <span className="text-xs text-muted/70">🔉</span>
+        <div className="ml-2 flex flex-1 items-center gap-2">
+          <span className="text-muted">
+            <VolumeIcon />
+          </span>
           <input
             type="range"
             name="masterVolume"
@@ -218,7 +217,7 @@ export default function HomePage() {
             step={0.01}
             value={volume}
             onChange={(e) => handleVolumeChange(Number(e.target.value))}
-            className="subtle-slider w-24"
+            className="subtle-slider w-full"
             style={{ color: accent }}
           />
         </div>

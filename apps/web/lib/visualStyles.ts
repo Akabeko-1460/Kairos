@@ -201,6 +201,31 @@ export const latticeStyle: VisualStyle<LatticeState> = {
       ctx.fillStyle = rgba(rgb, alpha);
       ctx.fill();
     }
+
+    // 副曲線レイヤー: 主曲線群と同格の大きさを持つ、もう1つのハイポトロコイド曲線。
+    // 主レイヤーとは独立した周期・逆方向の回転で重なり合うことで、2枚のガラスを
+    // ずらして重ねたようなモアレ干渉が生まれる（参考: 2層スピログラフの重ね合わせ技法）。
+    // 中心付近だけの小さな飾りではなく、主曲線と同じ画面占有率で「もう1つの物語」を語る。
+    const secondaryPeriod = STUDY_PERIOD * 1.7; // 主周期と整数比にせず、ゆっくり位相がずれ続けるようにする
+    const secondaryBreath = storyBreath(t, secondaryPeriod);
+    const secondaryR = Math.max(hole + minDim * 0.05, minDim * 0.44);
+    const secondaryR2 = secondaryR / 13;
+    const secondaryD = secondaryR2 * 0.46 * (0.85 + amp * 0.2);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-t * 0.017);
+    ctx.beginPath();
+    const secondarySteps = 420;
+    for (let s = 0; s <= secondarySteps; s++) {
+      const th = (s / secondarySteps) * Math.PI * 2;
+      const [x, y] = hypotrochoidPoint(secondaryR, secondaryR2, secondaryD, th);
+      if (s === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = rgba(rgb, (0.14 + secondaryBreath * 0.16) * (0.3 + converge * 0.5));
+    ctx.lineWidth = Math.max(0.8, minDim * 0.001);
+    ctx.stroke();
+    ctx.restore();
   },
 };
 
@@ -336,6 +361,50 @@ export const networkStyle: VisualStyle<NetworkState> = {
       ctx.fillStyle = rgba(rgb, (0.3 + localAmp * 0.35 + waveHit * 0.35) * breath);
       ctx.fill();
     }
+
+    // 副ネットワークレイヤー: 主ネットワークと同格の大きさを持つ、もう1つのノード網。
+    // 独立した周期でゆっくり逆回転しながら現れては消え、主ネットワークと重なる瞬間だけ
+    // 2つの網が一致して見える（参考: 2層グリッドの重ね合わせによるモアレ干渉技法）。
+    // 「複数のプロジェクトが独立して進み、時々足並みが揃う」という Work の物語に沿わせる。
+    const secondaryPeriod = WORK_WAVE_PERIOD * 1.45;
+    const secondaryPhase = cyclePhase(t, secondaryPeriod);
+    const secondaryAlpha = smoothPulse(secondaryPhase, 0.5, 0.46);
+    if (secondaryAlpha > 0.015) {
+      const secondaryCount = 10;
+      const secondaryR = Math.max(hole + minDim * 0.06, minDim * 0.5);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(-t * 0.015);
+      const secondaryPos: Array<readonly [number, number]> = [];
+      for (let i = 0; i < secondaryCount; i++) {
+        const a = (i / secondaryCount) * Math.PI * 2;
+        const r = secondaryR * (0.86 + 0.14 * Math.sin(a * 3 + t * 0.05));
+        secondaryPos.push([Math.cos(a) * r, Math.sin(a) * r]);
+      }
+      ctx.strokeStyle = rgba(rgb, 0.16 * secondaryAlpha * breath);
+      ctx.lineWidth = Math.max(0.7, minDim * 0.0009);
+      ctx.beginPath();
+      for (const [i, [x, y]] of secondaryPos.entries()) {
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      // 星形に対角も結び、主ネットワークの放射状の辺と呼応する密度を持たせる
+      for (let i = 0; i < secondaryCount; i++) {
+        const [x1, y1] = secondaryPos[i]!;
+        const [x2, y2] = secondaryPos[(i + 3) % secondaryCount]!;
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+      }
+      ctx.stroke();
+      for (const [x, y] of secondaryPos) {
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(1.2, minDim * 0.003), 0, Math.PI * 2);
+        ctx.fillStyle = rgba(rgb, 0.22 * secondaryAlpha * breath);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
   },
 };
 
@@ -452,6 +521,37 @@ export const flowStyle: VisualStyle<FlowState> = {
       ctx.fillStyle = rgba(rgb, 0.28 * p.life * breath);
       ctx.fill();
     }
+
+    // 副多角形レイヤー: 主六角形と同格の大きさを持つ、もう1つの多角形（十角形）。
+    // 独立した周期・逆方向のゆっくりした回転で主多角形を包み込むように現れては溶け、
+    // 「張り詰め→解放」の物語がもう1つの時間軸でも並走しているように見せる
+    // （参考: 2層グリッドの重ね合わせによるモアレ干渉技法。中心の小さな飾りにはしない）。
+    const secondaryPeriod = RELAX_PERIOD * 1.4;
+    const secondaryPhase = cyclePhase(t, secondaryPeriod);
+    let secondaryAlpha: number;
+    if (secondaryPhase < 0.3) secondaryAlpha = easeInOutCubic(secondaryPhase / 0.3);
+    else if (secondaryPhase < 0.7) secondaryAlpha = 1;
+    else secondaryAlpha = 1 - easeInOutCubic((secondaryPhase - 0.7) / 0.3);
+    if (secondaryAlpha > 0.01) {
+      const sides = 10;
+      const radius = Math.max(hole + minDim * 0.08, minDim * 0.27) * (0.96 + amp * 0.08);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(-t * 0.018);
+      ctx.beginPath();
+      for (let i = 0; i <= sides; i++) {
+        const a = (i / sides) * Math.PI * 2;
+        const x = Math.cos(a) * radius;
+        const y = Math.sin(a) * radius;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = rgba(rgb, 0.22 * secondaryAlpha * breath);
+      ctx.lineWidth = Math.max(0.8, minDim * 0.0014);
+      ctx.stroke();
+      ctx.restore();
+    }
   },
 };
 
@@ -555,6 +655,34 @@ export const starfieldStyle: VisualStyle<StarfieldState> = {
       ctx.fill();
     }
 
+    // 副軌道リング: 主となる星々・星座と同格の大きさを持つ、もう1つの軌道パターン。
+    // 画面の大部分を占める大きなリング状に並んだ点を、独立した周期でゆっくり逆回転させる。
+    // 中心付近だけの小さな星雲ではなく、土星の環のように画面全体を横切る規模で
+    // 「深く沈んでいく」物語に呼応する、もう1つの静かな時間軸を作る（モアレ干渉技法を参照）。
+    const haloPeriod = STORY_PERIOD_SEC.starfield * 1.35;
+    const haloBreath = storyBreath(t, haloPeriod);
+    const haloCount = 22;
+    const haloR = minDim * 0.46;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-t * 0.01);
+    ctx.scale(1, 0.55);
+    ctx.strokeStyle = rgba(rgb, 0.08 * haloBreath);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, haloR, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < haloCount; i++) {
+      const a = (i / haloCount) * Math.PI * 2;
+      const x = Math.cos(a) * haloR;
+      const y = Math.sin(a) * haloR;
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(1, minDim * 0.0016), 0, Math.PI * 2);
+      ctx.fillStyle = rgba(rgb, (0.12 + 0.14 * Math.abs(Math.sin(a * 4 + t * 0.08))) * haloBreath);
+      ctx.fill();
+    }
+    ctx.restore();
+
     // 時折流れる星（物語のアクセント）
     const shootCycleIdx = Math.floor(t / SLEEP_SHOOT_PERIOD);
     const shootPhase = cyclePhase(t, SLEEP_SHOOT_PERIOD);
@@ -647,19 +775,23 @@ export const trailsStyle: VisualStyle<TrailsState> = {
     }
 
     // ピーク到達の瞬間に中心から放射状のバースト（インターバルの山場）
+    const cycleIdx = Math.floor(t / MOVE_PERIOD);
     const burstWindow = smoothPulse(phase, 0.42, 0.06);
     if (burstWindow > 0.01) {
-      const cycleIdx = Math.floor(t / MOVE_PERIOD);
+      // 3インターバルに1回（長周期 = 主周期の3倍）は光線の本数・長さを増やした
+      // 「大きな節目」のバーストにする。毎回同じ強さだと単調になるための変化。
+      const isMilestone = cycleIdx % 3 === 0;
       const rngBurst = mulberry32(state.seedBase + cycleIdx * 911);
-      const rayCount = 14;
+      const rayCount = isMilestone ? 22 : 14;
+      const lenMul = isMilestone ? 1.6 : 1;
       for (let i = 0; i < rayCount; i++) {
         const a = (i / rayCount) * Math.PI * 2 + rngBurst();
-        const len = minDim * (0.06 + rngBurst() * 0.18) * burstWindow;
+        const len = minDim * (0.06 + rngBurst() * 0.18) * burstWindow * lenMul;
         const x1 = cx + Math.cos(a) * (hole + minDim * 0.02);
         const y1 = cy + Math.sin(a) * (hole + minDim * 0.02);
         const x2 = cx + Math.cos(a) * (hole + minDim * 0.02 + len);
         const y2 = cy + Math.sin(a) * (hole + minDim * 0.02 + len);
-        ctx.strokeStyle = rgba(rgb, 0.5 * burstWindow);
+        ctx.strokeStyle = rgba(rgb, (isMilestone ? 0.6 : 0.5) * burstWindow);
         ctx.lineWidth = Math.max(1, minDim * 0.002);
         ctx.beginPath();
         ctx.moveTo(x1, y1);
@@ -667,75 +799,37 @@ export const trailsStyle: VisualStyle<TrailsState> = {
         ctx.stroke();
       }
     }
+
+    // 副リサージュ軌道: 主パーティクル群と同格の広がりを持つ、もう1つのリサージュ曲線。
+    // 独立した周期数比（3:2）で常時軌道を描き、エネルギー包絡線が谷の間も
+    // 「休んでいても止まらない鼓動」を画面いっぱいの規模で表す（中心の小さな点にはしない）。
+    const secondaryPeriod = MOVE_PERIOD * 1.3;
+    const secondaryBreath = storyBreath(t, secondaryPeriod);
+    const secondaryRx = Math.max(hole + minDim * 0.05, minDim * 0.4);
+    const secondaryRy = secondaryRx * 0.8;
+    const secondarySpeed = t * 0.09;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.beginPath();
+    const secondarySteps = 260;
+    for (let s = 0; s <= secondarySteps; s++) {
+      const u = (s / secondarySteps) * Math.PI * 2;
+      const x = Math.sin(3 * u + secondarySpeed) * secondaryRx;
+      const y = Math.sin(2 * u) * secondaryRy;
+      if (s === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = rgba(rgb, (0.14 + secondaryBreath * 0.18) * (0.5 + energy * 0.5));
+    ctx.lineWidth = Math.max(0.8, minDim * 0.0012);
+    ctx.stroke();
+    ctx.restore();
   },
 };
 
-// ============================================================================
-// アンビエント塵レイヤー — 各スタイル固有の「物語の周期」とは無関係に、常に控えめに
-// 瞬き続ける粒子。スタイル本体が物語の谷（散らばり待ち・溶解直後など）で静かになる瞬間でも
-// 画面が寂しくならないようにする、全スタイル共通の下support層。
-// ============================================================================
-
-interface DustParticle {
-  nx: number;
-  ny: number;
-  phase: number;
-  speed: number;
-  size: number;
-  driftAngle: number;
-  driftSpeed: number;
-  driftRadiusRatio: number;
-}
-
-function createDust(seed: number, count: number): DustParticle[] {
-  const rng = mulberry32(seed);
-  return Array.from({ length: count }, () => ({
-    nx: rng(),
-    ny: rng(),
-    phase: rng() * Math.PI * 2,
-    speed: 0.35 + rng() * 0.75,
-    size: 0.6 + rng() * 1.3,
-    driftAngle: rng() * Math.PI * 2,
-    driftSpeed: 0.008 + rng() * 0.018,
-    driftRadiusRatio: 0.008 + rng() * 0.018,
-  }));
-}
-
-function drawDust(f: Frame, dust: readonly DustParticle[]): void {
-  const { ctx, w, h, t, minDim, rgb } = f;
-  for (const d of dust) {
-    const twinkle = 0.25 + 0.75 * Math.abs(Math.sin(t * d.speed + d.phase));
-    const dx = Math.cos(t * d.driftSpeed + d.driftAngle) * d.driftRadiusRatio * minDim;
-    const dy = Math.sin(t * d.driftSpeed + d.driftAngle) * d.driftRadiusRatio * minDim;
-    const x = d.nx * w + dx;
-    const y = d.ny * h + dy;
-    ctx.beginPath();
-    ctx.arc(x, y, d.size, 0, Math.PI * 2);
-    ctx.fillStyle = rgba(rgb, 0.06 + twinkle * 0.2);
-    ctx.fill();
-  }
-}
-
-/** 物語の周期に関わらず、いつでも控えめに瞬く塵レイヤーをスタイルに合成する。 */
-function withAmbientDust<S>(style: VisualStyle<S>, dustCount = 24): VisualStyle<{ inner: S; dust: DustParticle[] }> {
-  return {
-    clearMode: style.clearMode,
-    fadeAlpha: style.fadeAlpha,
-    createState(seed) {
-      return { inner: style.createState(seed), dust: createDust(seed + 50021, dustCount) };
-    },
-    draw(f, state) {
-      style.draw(f, state.inner);
-      drawDust(f, state.dust);
-    },
-  };
-}
-
 export const VISUAL_STYLES: Record<VisualStyleId, VisualStyle<unknown>> = {
-  lattice: withAmbientDust(latticeStyle) as VisualStyle<unknown>,
-  network: withAmbientDust(networkStyle) as VisualStyle<unknown>,
-  flow: withAmbientDust(flowStyle) as VisualStyle<unknown>,
-  // starfield は元から高密度の星を常時描いているため塵レイヤーは不要
+  lattice: latticeStyle as VisualStyle<unknown>,
+  network: networkStyle as VisualStyle<unknown>,
+  flow: flowStyle as VisualStyle<unknown>,
   starfield: starfieldStyle as VisualStyle<unknown>,
-  trails: withAmbientDust(trailsStyle) as VisualStyle<unknown>,
+  trails: trailsStyle as VisualStyle<unknown>,
 };

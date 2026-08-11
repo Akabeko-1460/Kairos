@@ -1,16 +1,16 @@
 "use client";
 
 import { DebugPanel } from "@/components/DebugPanel";
-import { GeometricVisualizer } from "@/components/GeometricVisualizer";
 import { PresetSelector } from "@/components/PresetSelector";
 import { RoundIndicator } from "@/components/RoundIndicator";
 import { TimerRing } from "@/components/TimerRing";
 import { useNow } from "@/hooks/useNow";
 import { useSoundscape } from "@/hooks/useSoundscape";
 import { useTimerStore } from "@/hooks/useTimer";
+import { useBackgroundArtStore } from "@/lib/backgroundArtStore";
 import { isRunning, progress, remainingMs, type PomodoroPreset } from "@kairos/core";
 import { motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const buttonMotion = { whileHover: { scale: 1.04 }, whileTap: { scale: 0.95 } } as const;
 
@@ -52,6 +52,7 @@ export default function PomodoroPage() {
   const changePreset = useTimerStore((s) => s.changePreset);
 
   const { ensureEngine, engineReady, debugInfo } = useSoundscape();
+  const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
   const now = useNow();
   const [showDebug, setShowDebug] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -60,6 +61,17 @@ export default function PomodoroPage() {
   const isBreakPhase = state.phase === "shortBreak" || state.phase === "longBreak";
   const accent = isBreakPhase ? BREAK_ACCENT : FOCUS_ACCENT;
   const accentHex = isBreakPhase ? BREAK_ACCENT_HEX : FOCUS_ACCENT_HEX;
+
+  // 画面全体（ヘッダーも含む）で共有する背景アートに、このページの状態を反映する。
+  useEffect(() => {
+    setBackgroundArt({
+      active: isRunning(state),
+      styleId: isBreakPhase ? "flow" : "network",
+      accentColor: accentHex,
+      holeRadiusRatio: 0,
+      seed: isBreakPhase ? 2 : 1,
+    });
+  }, [state, isBreakPhase, accentHex, setBackgroundArt]);
 
   const handleStart = async () => {
     setStarting(true);
@@ -86,7 +98,7 @@ export default function PomodoroPage() {
   const handleSelectPreset = (preset: PomodoroPreset) => changePreset(preset);
 
   return (
-    <div className="grid-bg relative flex flex-1 items-center justify-center overflow-hidden px-8 py-12">
+    <div className="relative flex flex-1 items-center justify-center px-8 py-12">
       <button
         type="button"
         onClick={() => setShowDebug((v) => !v)}
@@ -94,9 +106,6 @@ export default function PomodoroPage() {
       >
         {showDebug ? "HIDE DEBUG" : "DEBUG"}
       </button>
-
-      {/* holeRadiusRatio は指定しない: リングの裏側も含めて画面全体にアートを表示する */}
-      <GeometricVisualizer active={isRunning(state)} accentColor={accentHex} styleId={isBreakPhase ? "flow" : "network"} />
 
       <div className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-center lg:gap-20">
         <div className="flex flex-col items-center gap-8">

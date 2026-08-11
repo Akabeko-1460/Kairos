@@ -35,29 +35,6 @@ body {
 }
 
 /*
- * PC向けの余白を持て余さないための控えめなグリッド背景。主張しすぎない極薄の線のみ。
- * 子要素の不透明度に影響させたくないので、opacity ではなく疑似要素 + rgba で薄くする
- * （親に opacity をかけると子孫ごと半透明になってしまうため）。
- */
-.grid-bg {
-  position: relative;
-  isolation: isolate;
-}
-.grid-bg::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image:
-    linear-gradient(to right, rgba(237, 237, 240, 0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(237, 237, 240, 0.05) 1px, transparent 1px);
-  background-size: 64px 64px;
-  background-position: center;
-  -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, black 40%, transparent 90%);
-  mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, black 40%, transparent 90%);
-}
-
-/*
  * 音量スライダー。ブラウザ既定のカラフルな太いバーは主張が強すぎるため、
  * 細いトラック + 小さいつまみの控えめな見た目にする（docs/02_SPEC.md §6.1: UIは目立たせない）。
  * つまみの色はJS側で accent-color としてではなく currentColor 経由で渡す想定。
