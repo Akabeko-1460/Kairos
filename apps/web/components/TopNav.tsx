@@ -15,25 +15,20 @@ export function TopNav() {
 
   return (
     <header className="flex w-full items-center justify-center px-8 pb-4 pt-8">
-      <nav className="flex items-center gap-1">
+      <nav className="flex items-center gap-6">
         {TABS.map((tab) => {
           const active = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
           return (
-            <Link
-              key={tab.href}
-              href={tab.href}
-              className={`relative rounded-full px-4 py-1.5 text-xs tracking-wide transition-colors ${
-                active ? "text-foreground" : "text-muted hover:text-foreground"
-              }`}
-            >
-              {active && (
-                <motion.span
-                  layoutId="top-nav-active-pill"
-                  className="absolute inset-0 rounded-full bg-surface"
-                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
-                />
-              )}
-              <span className="relative">{tab.label}</span>
+            <Link key={tab.href} href={tab.href} className="px-1 py-1">
+              <motion.span
+                className="inline-block text-sm tracking-wide"
+                initial={false}
+                animate={{ color: active ? "#ededf0" : "#8b8b93", y: 0 }}
+                whileHover={{ color: "#ededf0", y: -2 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+              >
+                {tab.label}
+              </motion.span>
             </Link>
           );
         })}

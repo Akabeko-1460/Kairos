@@ -3,6 +3,7 @@
 import { GeometricVisualizer } from "@/components/GeometricVisualizer";
 import { SoundIcon, type IconVariant } from "@/components/SoundIcon";
 import { useFreeplay } from "@/hooks/useFreeplay";
+import type { VisualStyleId } from "@/lib/visualStyles";
 import type { EnginePhase } from "@kairos/audio-engine";
 import { AnimatePresence, motion } from "framer-motion";
 import { useMemo, useState } from "react";
@@ -13,8 +14,8 @@ interface SoundEntry {
   label: string;
   icon: IconVariant;
   accent: string;
-  /** GeometricVisualizer 中心の多角形の頂点数。カテゴリごとに変えて印象を差別化する。 */
-  sides: number;
+  /** カテゴリごとに全く異なる生成アートを描く（lib/visualStyles.ts）。 */
+  visual: VisualStyleId;
   subtitles: readonly string[];
 }
 
@@ -28,7 +29,7 @@ const SOUNDS: SoundEntry[] = [
     label: "Study",
     icon: "book",
     accent: "#4c6ef5",
-    sides: 4,
+    visual: "lattice",
     subtitles: ["Steady Focus", "Quiet Concentration", "Reading Flow", "Exam Prep Mode"],
   },
   {
@@ -37,7 +38,7 @@ const SOUNDS: SoundEntry[] = [
     label: "Work",
     icon: "focus",
     accent: "#8562f5",
-    sides: 6,
+    visual: "network",
     subtitles: ["Deep Work Flow", "Task Momentum", "Inbox Zero Mode", "Project Sprint"],
   },
   {
@@ -46,7 +47,7 @@ const SOUNDS: SoundEntry[] = [
     label: "Relax",
     icon: "break",
     accent: "#3fae8e",
-    sides: 8,
+    visual: "flow",
     subtitles: ["Slow Exhale", "Soft Reset", "Gentle Unwind", "Afternoon Drift"],
   },
   {
@@ -55,7 +56,7 @@ const SOUNDS: SoundEntry[] = [
     label: "Sleep",
     icon: "crescent",
     accent: "#5b5ee6",
-    sides: 12,
+    visual: "starfield",
     subtitles: ["Wind Down", "Night Settle", "Drifting Off", "Quiet Hours"],
   },
   {
@@ -64,7 +65,7 @@ const SOUNDS: SoundEntry[] = [
     label: "Move",
     icon: "motion",
     accent: "#f5a94c",
-    sides: 3,
+    visual: "trails",
     subtitles: ["Light Cardio", "Walking Pace", "Morning Stretch", "Energy Boost"],
   },
 ];
@@ -117,7 +118,12 @@ export default function HomePage() {
 
   return (
     <div className="relative flex flex-1 flex-col items-center justify-between overflow-hidden px-8 py-14">
-      <GeometricVisualizer active={freeplayPlaying} accentColor={accent} sides={selected?.sides ?? 6} />
+      <GeometricVisualizer
+        active={freeplayPlaying}
+        accentColor={accent}
+        styleId={selected?.visual ?? "starfield"}
+        seed={selected ? SOUNDS.indexOf(selected) + 1 : 0}
+      />
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3 text-center">
         <AnimatePresence mode="wait">

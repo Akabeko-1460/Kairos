@@ -98,7 +98,7 @@ export default function PomodoroPage() {
       <GeometricVisualizer
         active={isRunning(state)}
         accentColor={accentHex}
-        sides={isBreakPhase ? 8 : 6}
+        styleId={isBreakPhase ? "flow" : "network"}
         holeRadiusRatio={0.11}
       />
 

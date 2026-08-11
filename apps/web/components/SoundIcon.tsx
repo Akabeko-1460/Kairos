@@ -1,5 +1,7 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState } from "react";
+
 /**
  * Home画面のサウンド選択アイコン。Endelの実際のアイコン意匠は使わず、
  * 抽象的な幾何学モチーフのオリジナルSVGのみで構成する（docs/CLAUDE.md 禁止事項）。
@@ -49,6 +51,20 @@ interface SoundIconProps {
 }
 
 export function SoundIcon({ variant, locked = false, size = 22 }: SoundIconProps) {
+  const groupRef = useRef<SVGGElement>(null);
+  const [offset, setOffset] = useState({ dx: 0, dy: 0 });
+
+  // 手描きのパスはバウンディングボックスが (12,12) ちょうどに揃わないことが多いので、
+  // 実測した図形の重心を viewBox の中心へ補正する（円ボタンの中で視覚的にズレて見える問題の対策）。
+  useLayoutEffect(() => {
+    const g = groupRef.current;
+    if (!g) return;
+    const bbox = g.getBBox();
+    const cx = bbox.x + bbox.width / 2;
+    const cy = bbox.y + bbox.height / 2;
+    setOffset({ dx: 12 - cx, dy: 12 - cy });
+  }, [variant]);
+
   return (
     <span className="relative inline-flex">
       <svg
@@ -62,7 +78,9 @@ export function SoundIcon({ variant, locked = false, size = 22 }: SoundIconProps
         strokeLinejoin="round"
         className={locked ? "opacity-40" : "opacity-90"}
       >
-        {PATHS[variant]}
+        <g ref={groupRef} transform={`translate(${offset.dx} ${offset.dy})`}>
+          {PATHS[variant]}
+        </g>
       </svg>
       {locked && (
         <svg
