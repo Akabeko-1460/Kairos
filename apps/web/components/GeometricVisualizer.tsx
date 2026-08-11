@@ -3,6 +3,7 @@
 import { getVisualizerFrequencyData } from "@/lib/soundscapeRuntime";
 import { VISUAL_STYLES, type VisualStyleId } from "@/lib/visualStyles";
 import { useEffect, useRef } from "react";
+import { ShaderVisualizer } from "./ShaderVisualizer";
 
 interface GeometricVisualizerProps {
   /** 音が実際に鳴っているか。false のときは低振幅のアイドル呼吸パターンにフォールバックする。 */
@@ -25,6 +26,11 @@ function hexToRgb(hex: string): [number, number, number] {
   return [parseInt(m[1]!, 16), parseInt(m[2]!, 16), parseInt(m[3]!, 16)];
 }
 
+/**
+ * 背景（WebGLシェーダーによる、Endelを表現面で参考にした有機的に流れ続けるアート）と、
+ * その上に重ねる精密な幾何学レイヤー（canvas 2D、lib/visualStyles.ts）の2層構成。
+ * 前者が「常に何かが流れている」土台を、後者が「モードごとの構造・物語」を担う。
+ */
 export function GeometricVisualizer({
   active,
   accentColor,
@@ -91,11 +97,15 @@ export function GeometricVisualizer({
         hasLiveData ? bandAverage(freqData, from, to) : 0.12 + 0.08 * Math.sin(t * 0.5 + from * 6);
 
       if (style.clearMode === "clear") {
+        ctx.globalCompositeOperation = "source-over";
         ctx.clearRect(0, 0, w, h);
       } else {
-        // 前フレームをうっすら塗り重ねて軌跡を残す（背景色と同じ色をごく低アルファで重ねる）
-        ctx.fillStyle = `rgba(10, 10, 12, ${style.fadeAlpha ?? 0.1})`;
+        // このcanvasはシェーダー背景の上に重ねる透明レイヤーなので、不透明色で塗り重ねると
+        // 背景を隠してしまう。destination-out で「うっすら消す」ことで軌跡だけを残す。
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.fillStyle = `rgba(0, 0, 0, ${style.fadeAlpha ?? 0.1})`;
         ctx.fillRect(0, 0, w, h);
+        ctx.globalCompositeOperation = "source-over";
       }
 
       style.draw(
@@ -128,5 +138,10 @@ export function GeometricVisualizer({
     };
   }, [accentColor, styleId, holeRadiusRatio, seed]);
 
-  return <canvas ref={canvasRef} aria-hidden className="pointer-events-none absolute inset-0 h-full w-full" />;
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      <ShaderVisualizer active={active} styleId={styleId} holeRadiusRatio={holeRadiusRatio} />
+      <canvas ref={canvasRef} aria-hidden className="absolute inset-0 h-full w-full opacity-80" />
+    </div>
+  );
 }
