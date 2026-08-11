@@ -6,6 +6,7 @@ import { useSoundscapeRuntime } from "@/lib/soundscapeRuntime";
 export function useFreeplay() {
   const engineReady = useSoundscapeRuntime((s) => s.engineReady);
   const freeplayPhase = useSoundscapeRuntime((s) => s.freeplayPhase);
+  const freeplayCategoryId = useSoundscapeRuntime((s) => s.freeplayCategoryId);
   const freeplayPlaying = useSoundscapeRuntime((s) => s.freeplayPlaying);
   const mode = useSoundscapeRuntime((s) => s.mode);
   const ensureEngine = useSoundscapeRuntime((s) => s.ensureEngine);
@@ -18,6 +19,7 @@ export function useFreeplay() {
   return {
     engineReady,
     freeplayPhase,
+    freeplayCategoryId,
     freeplayPlaying,
     mode,
     ensureEngine,

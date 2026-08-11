@@ -4,49 +4,78 @@ import { GeometricVisualizer } from "@/components/GeometricVisualizer";
 import { SoundIcon, type IconVariant } from "@/components/SoundIcon";
 import { useFreeplay } from "@/hooks/useFreeplay";
 import type { EnginePhase } from "@kairos/audio-engine";
+import { AnimatePresence, motion } from "framer-motion";
 import { useMemo, useState } from "react";
 
-const FOCUS_ACCENT = "#4c6ef5";
-const BREAK_ACCENT = "#3fae8e";
-
-const FOCUS_SUBTITLES = ["Quiet Momentum", "Deep Work Flow", "Steady Attention", "Morning Clarity"];
-const BREAK_SUBTITLES = ["Slow Exhale", "Soft Reset", "Gentle Unwind", "Afternoon Drift"];
-
 interface SoundEntry {
-  id: "focus" | "break";
+  id: string;
   phase: EnginePhase;
   label: string;
   icon: IconVariant;
   accent: string;
+  /** GeometricVisualizer 中心の多角形の頂点数。カテゴリごとに変えて印象を差別化する。 */
+  sides: number;
+  subtitles: readonly string[];
 }
 
-const UNLOCKED_SOUNDS: SoundEntry[] = [
-  { id: "focus", phase: "focus", label: "Focus", icon: "focus", accent: FOCUS_ACCENT },
-  { id: "break", phase: "shortBreak", label: "Break", icon: "break", accent: BREAK_ACCENT },
+// docs/CLAUDE.md: 現状のサウンドパックは focus/break の2種類の音響エンジンしか持たないため、
+// 複数カテゴリが同じ phase を共有する（見た目・配色・副題は独立させ、体験としては別物にする）。
+// 将来 packs.json に専用パックが増えたら、それぞれ固有の phase / SoundPack を割り当てる。
+const SOUNDS: SoundEntry[] = [
+  {
+    id: "study",
+    phase: "focus",
+    label: "Study",
+    icon: "book",
+    accent: "#4c6ef5",
+    sides: 4,
+    subtitles: ["Steady Focus", "Quiet Concentration", "Reading Flow", "Exam Prep Mode"],
+  },
+  {
+    id: "work",
+    phase: "focus",
+    label: "Work",
+    icon: "focus",
+    accent: "#8562f5",
+    sides: 6,
+    subtitles: ["Deep Work Flow", "Task Momentum", "Inbox Zero Mode", "Project Sprint"],
+  },
+  {
+    id: "relax",
+    phase: "shortBreak",
+    label: "Relax",
+    icon: "break",
+    accent: "#3fae8e",
+    sides: 8,
+    subtitles: ["Slow Exhale", "Soft Reset", "Gentle Unwind", "Afternoon Drift"],
+  },
+  {
+    id: "sleep",
+    phase: "shortBreak",
+    label: "Sleep",
+    icon: "crescent",
+    accent: "#5b5ee6",
+    sides: 12,
+    subtitles: ["Wind Down", "Night Settle", "Drifting Off", "Quiet Hours"],
+  },
+  {
+    id: "move",
+    phase: "focus",
+    label: "Move",
+    icon: "motion",
+    accent: "#f5a94c",
+    sides: 3,
+    subtitles: ["Light Cardio", "Walking Pace", "Morning Stretch", "Energy Boost"],
+  },
 ];
 
-// 将来のサウンドパック拡張用のプレースホルダー。中身は未定なので鍵アイコンのみ表示する
-// （docs/PHASE0_SPIKES.md 等で言及の通り、現状は Focus/Break の1パックのみ実装済み）。
-const LOCKED_ICONS: IconVariant[] = [
-  "crescent",
-  "prism",
-  "orbit",
-  "dots",
-  "leaf",
-  "droplets",
-  "waves",
-  "flow",
-  "peaks",
-  "spiral",
-];
-
-function pick<T>(arr: T[]): T {
+function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
 export default function HomePage() {
   const {
-    freeplayPhase,
+    freeplayCategoryId,
     freeplayPlaying,
     ensureEngine,
     playFreeplay,
@@ -58,15 +87,12 @@ export default function HomePage() {
 
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [volume, setVolume] = useState(0.8);
-  const [subtitle, setSubtitle] = useState(pick(FOCUS_SUBTITLES));
+  const [subtitle, setSubtitle] = useState("");
 
-  const selected = useMemo(
-    () => UNLOCKED_SOUNDS.find((s) => s.phase === freeplayPhase) ?? null,
-    [freeplayPhase],
-  );
+  const selected = useMemo(() => SOUNDS.find((s) => s.id === freeplayCategoryId) ?? null, [freeplayCategoryId]);
 
   const handleSelect = async (entry: SoundEntry) => {
-    if (freeplayPhase === entry.phase) {
+    if (freeplayCategoryId === entry.id) {
       // 同じ音をもう一度選んだら一時停止/再開のトグルにする
       toggleFreeplayPause();
       return;
@@ -74,8 +100,8 @@ export default function HomePage() {
     setLoadingId(entry.id);
     try {
       await ensureEngine();
-      setSubtitle(pick(entry.phase === "focus" ? FOCUS_SUBTITLES : BREAK_SUBTITLES));
-      await playFreeplay(entry.phase);
+      setSubtitle(pick(entry.subtitles));
+      await playFreeplay(entry.id, entry.phase);
       setMasterVolume(volume);
     } finally {
       setLoadingId(null);
@@ -90,53 +116,60 @@ export default function HomePage() {
   const accent = selected?.accent ?? "#8b8b93";
 
   return (
-    <div className="grid-bg relative flex flex-1 flex-col items-center justify-between overflow-hidden px-8 py-14">
-      <GeometricVisualizer
-        active={freeplayPlaying}
-        accentColor={accent}
-        sides={selected?.id === "break" ? 8 : 6}
-        innerRadiusRatio={0.16}
-        maskOuterPercent={58}
-      />
+    <div className="relative flex flex-1 flex-col items-center justify-between overflow-hidden px-8 py-14">
+      <GeometricVisualizer active={freeplayPlaying} accentColor={accent} sides={selected?.sides ?? 6} />
 
-      <div className="relative flex flex-1 flex-col items-center justify-center gap-3 text-center">
-        <h1 className="text-3xl font-medium text-foreground">{selected ? selected.label : "Kairos"}</h1>
-        <p className="text-sm text-muted">
-          {selected ? subtitle : "集中と休憩に合わせて生成されるサウンドスケープを選んでください"}
-        </p>
+      <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-3 text-center">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={selected ? selected.id : "idle"}
+            initial={{ opacity: 0, y: 10, filter: "blur(6px)" }}
+            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+            exit={{ opacity: 0, y: -6, filter: "blur(4px)" }}
+            transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <h1 className="text-3xl font-medium text-foreground">{selected ? selected.label : "Kairos"}</h1>
+            <p className="mt-3 text-sm text-muted">
+              {selected ? subtitle : "集中と休憩に合わせて生成されるサウンドスケープを選んでください"}
+            </p>
+          </motion.div>
+        </AnimatePresence>
       </div>
 
-      <div className="relative z-10 mb-10 flex max-w-2xl flex-wrap items-center justify-center gap-4">
-        {UNLOCKED_SOUNDS.map((entry) => {
-          const active = freeplayPhase === entry.phase;
+      <div className="relative z-10 mb-10 flex max-w-2xl flex-wrap items-center justify-center gap-5">
+        {SOUNDS.map((entry) => {
+          const active = freeplayCategoryId === entry.id;
           return (
-            <button
-              key={entry.id}
-              type="button"
-              onClick={() => handleSelect(entry)}
-              disabled={loadingId === entry.id}
-              aria-label={entry.label}
-              className="flex h-14 w-14 items-center justify-center rounded-full border transition-colors disabled:opacity-50"
-              style={{
-                borderColor: active ? entry.accent : "var(--border)",
-                color: active ? entry.accent : "var(--muted)",
-                backgroundColor: active ? `${entry.accent}1a` : "transparent",
-              }}
-            >
-              <SoundIcon variant={entry.icon} size={24} />
-            </button>
+            <div key={entry.id} className="flex flex-col items-center gap-2">
+              <motion.button
+                type="button"
+                onClick={() => handleSelect(entry)}
+                disabled={loadingId === entry.id}
+                aria-label={entry.label}
+                whileHover={{ scale: 1.06 }}
+                whileTap={{ scale: 0.94 }}
+                className="relative flex h-16 w-16 items-center justify-center rounded-full border disabled:opacity-50"
+                style={{
+                  borderColor: active ? entry.accent : "var(--border)",
+                  color: active ? entry.accent : "var(--muted)",
+                }}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="home-sound-active-ring"
+                    className="absolute inset-0 rounded-full"
+                    style={{ backgroundColor: `${entry.accent}1a`, boxShadow: `0 0 24px 0 ${entry.accent}40` }}
+                    transition={{ type: "spring", stiffness: 400, damping: 32 }}
+                  />
+                )}
+                <span className="relative">
+                  <SoundIcon variant={entry.icon} size={24} />
+                </span>
+              </motion.button>
+              <span className="text-[10px] tracking-wide text-muted">{entry.label}</span>
+            </div>
           );
         })}
-
-        {LOCKED_ICONS.map((icon) => (
-          <span
-            key={icon}
-            className="flex h-14 w-14 items-center justify-center rounded-full border border-border text-muted/50"
-            title="Coming soon"
-          >
-            <SoundIcon variant={icon} locked size={22} />
-          </span>
-        ))}
       </div>
 
       <div className="relative z-10 flex w-full max-w-md items-center justify-center gap-4">

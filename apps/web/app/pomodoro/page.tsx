@@ -9,7 +9,10 @@ import { useNow } from "@/hooks/useNow";
 import { useSoundscape } from "@/hooks/useSoundscape";
 import { useTimerStore } from "@/hooks/useTimer";
 import { isRunning, progress, remainingMs, type PomodoroPreset } from "@kairos/core";
+import { motion } from "framer-motion";
 import { useState } from "react";
+
+const buttonMotion = { whileHover: { scale: 1.04 }, whileTap: { scale: 0.95 } } as const;
 
 const FOCUS_ACCENT = "var(--focus-accent)";
 const BREAK_ACCENT = "var(--break-accent)";
@@ -92,28 +95,26 @@ export default function PomodoroPage() {
         {showDebug ? "HIDE DEBUG" : "DEBUG"}
       </button>
 
+      <GeometricVisualizer
+        active={isRunning(state)}
+        accentColor={accentHex}
+        sides={isBreakPhase ? 8 : 6}
+        holeRadiusRatio={0.11}
+      />
+
       <div className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-center lg:gap-20">
         <div className="flex flex-col items-center gap-8">
-          <div className="relative flex h-[560px] w-[560px] items-center justify-center">
-            <GeometricVisualizer
-              active={isRunning(state)}
-              accentColor={accentHex}
-              sides={isBreakPhase ? 8 : 6}
-              innerRadiusRatio={0.33}
-              maskInnerPercent={64}
-              maskOuterPercent={94}
-            />
-            <TimerRing
-              progress={progress(state, now)}
-              label={phaseLabel(state.phase)}
-              timeLabel={formatMmSs(remainingMs(state, now))}
-              accentColor={accent}
-            />
-          </div>
+          <TimerRing
+            progress={progress(state, now)}
+            label={phaseLabel(state.phase)}
+            timeLabel={formatMmSs(remainingMs(state, now))}
+            accentColor={accent}
+          />
 
           <div className="flex items-center gap-4">
             {isIdle ? (
-              <button
+              <motion.button
+                {...buttonMotion}
                 type="button"
                 onClick={handleStart}
                 disabled={starting}
@@ -121,10 +122,11 @@ export default function PomodoroPage() {
                 style={{ backgroundColor: accent }}
               >
                 {starting ? "準備中…" : "Start"}
-              </button>
+              </motion.button>
             ) : !engineReady ? (
               <>
-                <button
+                <motion.button
+                  {...buttonMotion}
                   type="button"
                   onClick={handleResumeAudio}
                   disabled={starting}
@@ -132,49 +134,54 @@ export default function PomodoroPage() {
                   style={{ backgroundColor: accent }}
                 >
                   {starting ? "再開中…" : "Resume Audio"}
-                </button>
-                <button
+                </motion.button>
+                <motion.button
+                  {...buttonMotion}
                   type="button"
                   onClick={reset}
                   className="rounded-full border border-border px-6 py-2.5 text-sm font-medium text-foreground"
                 >
                   Reset
-                </button>
+                </motion.button>
               </>
             ) : (
               <>
                 {state.pausedAt ? (
-                  <button
+                  <motion.button
+                    {...buttonMotion}
                     type="button"
                     onClick={resume}
                     className="rounded-full px-6 py-2.5 text-sm font-medium text-background"
                     style={{ backgroundColor: accent }}
                   >
                     Resume
-                  </button>
+                  </motion.button>
                 ) : (
-                  <button
+                  <motion.button
+                    {...buttonMotion}
                     type="button"
                     onClick={pause}
                     className="rounded-full border border-border px-6 py-2.5 text-sm font-medium text-foreground"
                   >
                     Pause
-                  </button>
+                  </motion.button>
                 )}
-                <button
+                <motion.button
+                  {...buttonMotion}
                   type="button"
                   onClick={skip}
                   className="rounded-full border border-border px-6 py-2.5 text-sm font-medium text-foreground"
                 >
                   Skip
-                </button>
-                <button
+                </motion.button>
+                <motion.button
+                  {...buttonMotion}
                   type="button"
                   onClick={reset}
                   className="rounded-full border border-border px-6 py-2.5 text-sm font-medium text-foreground"
                 >
                   Reset
-                </button>
+                </motion.button>
               </>
             )}
           </div>

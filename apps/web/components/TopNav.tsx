@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -21,11 +22,18 @@ export function TopNav() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`rounded-full px-4 py-1.5 text-xs tracking-wide transition-colors ${
-                active ? "bg-surface text-foreground" : "text-muted hover:text-foreground"
+              className={`relative rounded-full px-4 py-1.5 text-xs tracking-wide transition-colors ${
+                active ? "text-foreground" : "text-muted hover:text-foreground"
               }`}
             >
-              {tab.label}
+              {active && (
+                <motion.span
+                  layoutId="top-nav-active-pill"
+                  className="absolute inset-0 rounded-full bg-surface"
+                  transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                />
+              )}
+              <span className="relative">{tab.label}</span>
             </Link>
           );
         })}

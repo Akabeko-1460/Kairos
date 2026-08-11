@@ -4,66 +4,42 @@
  * Home画面のサウンド選択アイコン。Endelの実際のアイコン意匠は使わず、
  * 抽象的な幾何学モチーフのオリジナルSVGのみで構成する（docs/CLAUDE.md 禁止事項）。
  */
-export type IconVariant =
-  | "focus"
-  | "break"
-  | "crescent"
-  | "prism"
-  | "orbit"
-  | "dots"
-  | "leaf"
-  | "droplets"
-  | "waves"
-  | "flow"
-  | "peaks"
-  | "spiral";
+export type IconVariant = "book" | "focus" | "break" | "crescent" | "motion";
 
 const PATHS: Record<IconVariant, React.ReactNode> = {
+  // Study: 開いた本
+  book: (
+    <>
+      <path d="M12 6.5c-1.6-1.2-3.6-1.8-6-1.8v12.6c2.4 0 4.4.6 6 1.8" />
+      <path d="M12 6.5c1.6-1.2 3.6-1.8 6-1.8v12.6c-2.4 0-4.4.6-6 1.8" />
+      <path d="M12 6.5v12.6" />
+    </>
+  ),
+  // Work: 的（集中）
   focus: (
     <>
       <circle cx="12" cy="12" r="7.5" />
       <circle cx="12" cy="12" r="3" />
     </>
   ),
+  // Relax: 息づく波
   break: (
     <>
       <path d="M6 14c1.5-4 3.5-6 6-6s4.5 2 6 6" />
       <path d="M5 17.5c2-2.5 4.5-3.5 7-3.5s5 1 7 3.5" />
     </>
   ),
+  // Sleep: 三日月
   crescent: <path d="M15 4a8 8 0 1 0 5 14 9 9 0 0 1-5-14Z" />,
-  prism: <path d="M12 3 20 18H4Z" />,
-  orbit: (
+  // Move: 走る軌跡
+  motion: (
     <>
-      <ellipse cx="12" cy="12" rx="9" ry="4" />
-      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M4 17 10 11" />
+      <path d="M8 17 13.5 8.5" />
+      <path d="M12.5 17 18 6" />
+      <circle cx="19" cy="5" r="1.4" fill="currentColor" stroke="none" />
     </>
   ),
-  dots: (
-    <>
-      {[4, 9, 14, 19].flatMap((y) =>
-        [5, 10, 15, 20].map((x) => (
-          <circle key={`${x}-${y}`} cx={x} cy={y} r="0.9" fill="currentColor" stroke="none" />
-        )),
-      )}
-    </>
-  ),
-  leaf: <path d="M6 19C6 10 11 4 19 4c0 8-5 14-13 15Zm0 0C6 14 9 10 13 8" />,
-  droplets: (
-    <>
-      <path d="M9 4c2 3 3 5 3 7a3 3 0 1 1-6 0c0-2 1-4 3-7Z" />
-      <path d="M16.5 10c1.3 2 2 3.3 2 4.7a2.5 2.5 0 1 1-5 0c0-1.4.7-2.7 3-4.7Z" />
-    </>
-  ),
-  waves: (
-    <>
-      <path d="M3 9c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0" />
-      <path d="M3 15c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0" />
-    </>
-  ),
-  flow: <path d="M4 6h9a4 4 0 0 1 0 8H7a3 3 0 0 0 0 6h9" />,
-  peaks: <path d="M3 18 8 8l4 6 3-4 6 8Z" />,
-  spiral: <path d="M12 4a8 8 0 1 1-6 13 5.5 5.5 0 1 0 4-9.2A3.2 3.2 0 1 1 13 12" />,
 };
 
 interface SoundIconProps {

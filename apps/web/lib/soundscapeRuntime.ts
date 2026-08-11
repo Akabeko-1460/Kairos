@@ -42,12 +42,18 @@ interface SoundscapeRuntimeStore {
   debugInfo: EngineDebugInfo;
   mode: PlaybackMode;
   freeplayPhase: EnginePhase | null;
+  /**
+   * Home 画面に表示される5カテゴリ（Study/Work/Relax/Sleep/Move）はUI上は別物だが、
+   * 現状のサウンドパックは focus/break の2種類しか実体を持たない。どのカテゴリが選ばれているかは
+   * ここで別管理し、freeplayPhase は「どの音響エンジンを鳴らすか」だけを表す。
+   */
+  freeplayCategoryId: string | null;
   freeplayPlaying: boolean;
 
   ensureEngine: () => Promise<SoundscapeEngine>;
   /** Pomodoro 画面が Start されたら呼ぶ。以後このループがタイマー駆動でエンジンを制御する。 */
   switchToTimerMode: () => void;
-  playFreeplay: (phase: EnginePhase) => Promise<void>;
+  playFreeplay: (categoryId: string, phase: EnginePhase) => Promise<void>;
   toggleFreeplayPause: () => void;
   regenerateFreeplay: () => void;
   stopFreeplay: () => void;
@@ -139,6 +145,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     debugInfo: null,
     mode: "idle",
     freeplayPhase: null,
+    freeplayCategoryId: null,
     freeplayPlaying: false,
 
     ensureEngine: async () => {
@@ -158,9 +165,9 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
 
     switchToTimerMode: () => set({ mode: "timer" }),
 
-    playFreeplay: async (phase) => {
+    playFreeplay: async (categoryId, phase) => {
       const e = await get().ensureEngine();
-      set({ mode: "freeplay", freeplayPhase: phase, freeplayPlaying: true });
+      set({ mode: "freeplay", freeplayPhase: phase, freeplayCategoryId: categoryId, freeplayPlaying: true });
       try {
         // begin() は currentGraph が既にあれば自動でクロスフェードに切り替える。
         await e.begin(phase, Date.now());
@@ -194,7 +201,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     stopFreeplay: () => {
       const e = engine;
       if (!e) return;
-      set({ mode: "idle", freeplayPhase: null, freeplayPlaying: false });
+      set({ mode: "idle", freeplayPhase: null, freeplayCategoryId: null, freeplayPlaying: false });
       void e.stop().catch(logEngineError);
       enginePhaseRef = null;
     },
