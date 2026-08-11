@@ -1,4 +1,5 @@
 import { createNoise3D } from "simplex-noise";
+import { STORY_PERIOD_SEC, storyBreath } from "./storyPeriods";
 
 /**
  * モードごとに全く異なる「ストーリー性のある」生成アートを描く。
@@ -98,7 +99,7 @@ const LATTICE_CURVES: LatticeCurveSpec[] = [
   { k: 5, rRatio: 0.2, dRatio: 0.72, speed: -0.08 },
   { k: 11, rRatio: 0.42, dRatio: 0.32, speed: 0.025 },
 ];
-const STUDY_PERIOD = 22; // 秒。1サイクル分の「集中が立ち上がる」物語の長さ
+const STUDY_PERIOD = STORY_PERIOD_SEC.lattice; // シェーダー背景と同じ周期で呼吸を揃える
 
 function hypotrochoidPoint(R: number, r: number, d: number, th: number): [number, number] {
   const x = (R - r) * Math.cos(th) + d * Math.cos(((R - r) / r) * th);
@@ -122,6 +123,9 @@ export const latticeStyle: VisualStyle<LatticeState> = {
   draw(f, state) {
     const { ctx, cx, cy, minDim, t, amp, band, rgb, hole } = f;
     const phase = cyclePhase(t, STUDY_PERIOD);
+    // シェーダー背景（lib/shaderVisual.ts）と全く同じ式の呼吸。2層が同じ脈で明滅することで
+    // 別々のエフェクトの重ね合わせではなく1つの作品として融合して見える。
+    const breath = storyBreath(t, STUDY_PERIOD);
 
     // 物語: 0-0.28 散漫 / 0.28-0.55 収束 / 0.55-0.85 精密に静止 / 0.85-1.0 解放
     let converge: number;
@@ -144,7 +148,7 @@ export const latticeStyle: VisualStyle<LatticeState> = {
       const len = (major ? 0.05 : 0.02) * minDim * (0.5 + bandAmp * 0.8);
       const r0 = tickBaseR;
       const r1 = tickBaseR + len;
-      ctx.strokeStyle = rgba(rgb, (major ? 0.4 + bandAmp * 0.3 : 0.14) * (0.25 + converge * 0.75));
+      ctx.strokeStyle = rgba(rgb, (major ? 0.4 + bandAmp * 0.3 : 0.14) * (0.25 + converge * 0.75) * breath);
       ctx.beginPath();
       ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
       ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
@@ -167,7 +171,7 @@ export const latticeStyle: VisualStyle<LatticeState> = {
         if (s === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
-      ctx.strokeStyle = rgba(rgb, (0.28 + curveAmp * 0.32) * (0.2 + converge * 0.8));
+      ctx.strokeStyle = rgba(rgb, (0.28 + curveAmp * 0.32) * (0.2 + converge * 0.8) * breath);
       ctx.lineWidth = Math.max(0.8, minDim * 0.0011);
       ctx.stroke();
       ctx.restore();
@@ -191,7 +195,7 @@ export const latticeStyle: VisualStyle<LatticeState> = {
       const x = cx + sx + (tx - sx) * converge;
       const y = cy + sy + (ty - sy) * converge;
       const size = Math.max(0.8, minDim * 0.0016) * (0.7 + converge * 1.1);
-      const alpha = 0.12 + converge * 0.55 + amp * 0.08;
+      const alpha = (0.12 + converge * 0.55 + amp * 0.08) * breath;
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fillStyle = rgba(rgb, alpha);
@@ -229,7 +233,7 @@ interface NetworkState {
 
 const NETWORK_RINGS = [0.15, 0.26, 0.38, 0.48];
 const NETWORK_COUNTS = [5, 7, 9, 11];
-const WORK_WAVE_PERIOD = 9; // 成長の波が中心から外へ広がる周期（秒）
+const WORK_WAVE_PERIOD = STORY_PERIOD_SEC.network; // 成長の波の周期。シェーダー背景と同期
 
 export const networkStyle: VisualStyle<NetworkState> = {
   clearMode: "clear",
@@ -285,6 +289,8 @@ export const networkStyle: VisualStyle<NetworkState> = {
     const wavePhase = cyclePhase(t, WORK_WAVE_PERIOD);
     const waveRadius = easeOutCubic(wavePhase) * minDim * 0.56;
     const waveBand = minDim * 0.09;
+    // シェーダー背景と同じ式の呼吸（このスタイル特有の成長波に加えて、全体の明滅を2層で揃える）
+    const breath = storyBreath(t, WORK_WAVE_PERIOD);
 
     const edgeAmp = band(0.05, 0.4);
     ctx.lineWidth = Math.max(0.7, minDim * 0.0009);
@@ -293,7 +299,7 @@ export const networkStyle: VisualStyle<NetworkState> = {
       const [x2, y2] = positions[e.b]!;
       const midR = (Math.hypot(x1 - cx, y1 - cy) + Math.hypot(x2 - cx, y2 - cy)) / 2;
       const waveHit = smoothPulse(midR, waveRadius, waveBand);
-      ctx.strokeStyle = rgba(rgb, 0.07 + edgeAmp * 0.14 + waveHit * 0.4);
+      ctx.strokeStyle = rgba(rgb, (0.07 + edgeAmp * 0.14 + waveHit * 0.4) * breath);
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
@@ -327,7 +333,7 @@ export const networkStyle: VisualStyle<NetworkState> = {
       const radius = Math.max(1.6, minDim * 0.004) * (0.7 + localAmp * 0.7 + waveHit * 0.6);
       ctx.beginPath();
       ctx.arc(pos[0], pos[1], radius, 0, Math.PI * 2);
-      ctx.fillStyle = rgba(rgb, 0.3 + localAmp * 0.35 + waveHit * 0.35);
+      ctx.fillStyle = rgba(rgb, (0.3 + localAmp * 0.35 + waveHit * 0.35) * breath);
       ctx.fill();
     }
   },
@@ -350,7 +356,7 @@ interface FlowState {
 }
 
 const FLOW_PARTICLE_COUNT = 150;
-const RELAX_PERIOD = 24; // 秒。緊張→溶解→解放→結晶化のサイクル
+const RELAX_PERIOD = STORY_PERIOD_SEC.flow; // 秒。緊張→溶解→解放→結晶化のサイクル。シェーダー背景と同期
 
 function resetFlowParticle(p: FlowParticle, f: Frame, rng: () => number): void {
   const margin = f.minDim * 0.05;
@@ -377,6 +383,7 @@ export const flowStyle: VisualStyle<FlowState> = {
   draw(f, state) {
     const { ctx, minDim, w, h, cx, cy, t, amp, rgb, hole } = f;
     const phase = cyclePhase(t, RELAX_PERIOD);
+    const breath = storyBreath(t, RELAX_PERIOD);
 
     // 物語: 0-0.3 張り詰めた多角形が明瞭 / 0.3-0.55 溶解（頂点から粒子が放たれる）
     // / 0.55-0.8 純粋なフロー / 0.8-1.0 静かに再結晶化
@@ -395,7 +402,7 @@ export const flowStyle: VisualStyle<FlowState> = {
       const by = cy + Math.sin(angle) * orbitR * 0.7;
       const blobR = minDim * (0.22 + i * 0.05) * (0.85 + amp * 0.25);
       const grad = ctx.createRadialGradient(bx, by, 0, bx, by, blobR);
-      grad.addColorStop(0, rgba(rgb, 0.07 + amp * 0.04));
+      grad.addColorStop(0, rgba(rgb, (0.07 + amp * 0.04) * breath));
       grad.addColorStop(1, rgba(rgb, 0));
       ctx.fillStyle = grad;
       ctx.beginPath();
@@ -419,7 +426,7 @@ export const flowStyle: VisualStyle<FlowState> = {
         else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.strokeStyle = rgba(rgb, 0.4 * polyAlpha);
+      ctx.strokeStyle = rgba(rgb, 0.4 * polyAlpha * breath);
       ctx.lineWidth = Math.max(1, minDim * 0.0018);
       ctx.stroke();
       ctx.restore();
@@ -442,7 +449,7 @@ export const flowStyle: VisualStyle<FlowState> = {
 
       ctx.beginPath();
       ctx.arc(p.x, p.y, Math.max(0.8, minDim * 0.0012), 0, Math.PI * 2);
-      ctx.fillStyle = rgba(rgb, 0.28 * p.life);
+      ctx.fillStyle = rgba(rgb, 0.28 * p.life * breath);
       ctx.fill();
     }
   },
@@ -500,6 +507,7 @@ export const starfieldStyle: VisualStyle<StarfieldState> = {
   },
   draw(f, state) {
     const { ctx, w, h, cx, cy, minDim, t, amp, rgb } = f;
+    const breath = storyBreath(t, STORY_PERIOD_SEC.starfield);
 
     for (const neb of state.nebulae) {
       const angle = neb.angle + t * neb.speed;
@@ -507,7 +515,7 @@ export const starfieldStyle: VisualStyle<StarfieldState> = {
       const y = cy + Math.sin(angle) * minDim * neb.orbitR * 0.6;
       const r = minDim * neb.sizeRatio * (0.9 + amp * 0.2);
       const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
-      grad.addColorStop(0, rgba(rgb, 0.1 + amp * 0.05));
+      grad.addColorStop(0, rgba(rgb, (0.1 + amp * 0.05) * breath));
       grad.addColorStop(1, rgba(rgb, 0));
       ctx.fillStyle = grad;
       ctx.beginPath();
@@ -593,7 +601,7 @@ interface TrailsState {
   seedBase: number;
 }
 
-const MOVE_PERIOD = 15; // 秒。助走→ピーク→クールダウンのインターバル周期
+const MOVE_PERIOD = STORY_PERIOD_SEC.trails; // 秒。助走→ピーク→クールダウンのインターバル周期。シェーダー背景と同期
 
 export const trailsStyle: VisualStyle<TrailsState> = {
   clearMode: "fade",
@@ -614,6 +622,7 @@ export const trailsStyle: VisualStyle<TrailsState> = {
   draw(f, state) {
     const { ctx, cx, cy, minDim, t, amp, band, rgb, hole } = f;
     const phase = cyclePhase(t, MOVE_PERIOD);
+    const breath = storyBreath(t, MOVE_PERIOD);
 
     // エネルギー包絡線: 0-0.4 助走 / 0.4-0.55 ピーク保持 / 0.55-1.0 クールダウン
     let energy: number;
@@ -633,7 +642,7 @@ export const trailsStyle: VisualStyle<TrailsState> = {
       const radius = Math.max(1.2, minDim * 0.0026) * p.sizeMul * (0.55 + energy * 0.6 + localAmp * 0.5);
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = rgba(rgb, 0.4 + energy * 0.35 + localAmp * 0.25);
+      ctx.fillStyle = rgba(rgb, (0.4 + energy * 0.35 + localAmp * 0.25) * breath);
       ctx.fill();
     }
 

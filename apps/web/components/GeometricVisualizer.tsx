@@ -141,7 +141,18 @@ export function GeometricVisualizer({
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       <ShaderVisualizer active={active} styleId={styleId} holeRadiusRatio={holeRadiusRatio} />
-      <canvas ref={canvasRef} aria-hidden className="absolute inset-0 h-full w-full opacity-80" />
+      {/*
+        mix-blend-mode: screen で下のシェーダー背景と加算的に溶け合わせる。
+        不透明な重ね塗りだと「背景の上に別レイヤーが乗っている」ように見えてしまうが、
+        screen 合成なら明るい線・粒子がシェーダーの光ににじむように馴染み、
+        2つの描画技術が1つの作品として融合して見える。
+      */}
+      <canvas
+        ref={canvasRef}
+        aria-hidden
+        className="absolute inset-0 h-full w-full"
+        style={{ mixBlendMode: "screen" }}
+      />
     </div>
   );
 }

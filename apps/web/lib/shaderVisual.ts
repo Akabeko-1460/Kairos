@@ -11,6 +11,7 @@
  * 参考: https://www.mysimulator.uk/domain-warping/ (IQ の手法解説)
  *       https://thebookofshaders.com/13/ (fBm の基礎)
  */
+import { STORY_PERIOD_SEC } from "./storyPeriods";
 import type { VisualStyleId } from "./visualStyles";
 
 export interface ShaderPalette {
@@ -38,7 +39,7 @@ export const SHADER_PALETTES: Record<VisualStyleId, ShaderPalette> = {
     baseFreq: 1.6,
     warpStrength: 0.55,
     flowSpeed: 0.045,
-    storyPeriodSec: 21,
+    storyPeriodSec: STORY_PERIOD_SEC.lattice,
     patternType: 0,
   },
   network: {
@@ -48,7 +49,7 @@ export const SHADER_PALETTES: Record<VisualStyleId, ShaderPalette> = {
     baseFreq: 1.9,
     warpStrength: 0.7,
     flowSpeed: 0.06,
-    storyPeriodSec: 18,
+    storyPeriodSec: STORY_PERIOD_SEC.network,
     patternType: 1,
   },
   flow: {
@@ -58,7 +59,7 @@ export const SHADER_PALETTES: Record<VisualStyleId, ShaderPalette> = {
     baseFreq: 1.1,
     warpStrength: 0.95,
     flowSpeed: 0.03,
-    storyPeriodSec: 24,
+    storyPeriodSec: STORY_PERIOD_SEC.flow,
     patternType: 2,
   },
   starfield: {
@@ -68,7 +69,7 @@ export const SHADER_PALETTES: Record<VisualStyleId, ShaderPalette> = {
     baseFreq: 1.3,
     warpStrength: 0.4,
     flowSpeed: 0.018,
-    storyPeriodSec: 28,
+    storyPeriodSec: STORY_PERIOD_SEC.starfield,
     patternType: 3,
   },
   trails: {
@@ -78,7 +79,7 @@ export const SHADER_PALETTES: Record<VisualStyleId, ShaderPalette> = {
     baseFreq: 2.3,
     warpStrength: 1.1,
     flowSpeed: 0.09,
-    storyPeriodSec: 15,
+    storyPeriodSec: STORY_PERIOD_SEC.trails,
     patternType: 4,
   },
 };
