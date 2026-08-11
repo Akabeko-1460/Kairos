@@ -22,7 +22,7 @@ export function PresetSelector({ selectedId, accentColor, onSelect }: PresetSele
   const allPresets: PomodoroPreset[] = [CLASSIC_PRESET, DEEP_PRESET, ...customPresets];
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {allPresets.map((preset) => {
         const active = preset.id === selectedId;
         const pendingDelete = pendingDeleteId === preset.id;

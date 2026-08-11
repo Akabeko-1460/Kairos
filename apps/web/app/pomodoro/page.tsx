@@ -329,9 +329,9 @@ export default function PomodoroPage() {
           {/*
             音量バーはSOUNDセクションの直後に置く。isIdleで出し分けず常時表示することで、
             Start前でもタイマー実行中でも操作できるようにする（PRESET/SOUNDが隠れているときは
-            自然にその位置へ繰り上がる）。
+            自然にその位置へ繰り上がる）。右カラム幅いっぱいだと間延びするので、幅は短めに絞る。
           */}
-          <div className="w-full">
+          <div className="w-40">
             <VolumeSlider value={masterVolume} onChange={setMasterVolume} accentColor={accent} />
           </div>
         </div>

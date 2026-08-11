@@ -34,24 +34,25 @@ export function TopNav() {
               className="relative px-1 py-1"
               onClick={tab.href === "/" ? handleHomeClick : undefined}
             >
-              {/* うっすらもわっと白く光るホバーグロー。ぼかした白い光暈をテキストの後ろに重ねる。 */}
+              {/* もわっと白く光るホバーグロー。ぼかした白い光暈をテキストの後ろに重ねて背景ごと明るくする。 */}
               <motion.span
                 aria-hidden
-                className="pointer-events-none absolute inset-[-14px] rounded-full bg-white"
-                style={{ filter: "blur(14px)" }}
+                className="pointer-events-none absolute inset-[-16px] rounded-full bg-white"
+                style={{ filter: "blur(16px)" }}
                 initial={{ opacity: 0, scale: 0.85 }}
-                whileHover={{ opacity: 0.32, scale: 1.15 }}
+                whileHover={{ opacity: 0.4, scale: 1.1 }}
                 transition={{ duration: 0.35, ease: "easeOut" }}
               />
               {/*
                 上に上がる動きだと「浮く」印象になるため、y方向の移動はやめて手前に迫るような
-                拡大（scale）だけで前進感を出す。文字そのものにも柔らかい白いにじみを足す。
+                拡大（scale）だけで前進感を出す。ただし拡大幅は控えめにして、光の演出（上の
+                グロー）の方を主役にする。
               */}
               <motion.span
                 className="relative inline-block text-sm tracking-wide"
                 initial={false}
                 animate={{ color: active ? "#ededf0" : "#8b8b93", scale: 1 }}
-                whileHover={{ color: "#ededf0", scale: 1.14 }}
+                whileHover={{ color: "#ededf0", scale: 1.06 }}
                 transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                 style={{ transformOrigin: "center" }}
               >
