@@ -1,23 +1,26 @@
 "use client";
 
 import { DebugPanel } from "@/components/DebugPanel";
+import { FocusThemeSelector } from "@/components/FocusThemeSelector";
 import { PresetSelector } from "@/components/PresetSelector";
 import { RoundIndicator } from "@/components/RoundIndicator";
 import { TimerRing } from "@/components/TimerRing";
 import { useNow } from "@/hooks/useNow";
 import { useSoundscape } from "@/hooks/useSoundscape";
+import { useTaskListStore } from "@/hooks/useTaskList";
 import { useTimerStore } from "@/hooks/useTimer";
 import { useBackgroundArtStore } from "@/lib/backgroundArtStore";
+import { FOCUS_SOUND_THEMES } from "@/lib/soundThemes";
 import { isRunning, progress, remainingMs, type PomodoroPreset } from "@kairos/core";
-import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useState, type KeyboardEvent } from "react";
 
 const buttonMotion = { whileHover: { scale: 1.04 }, whileTap: { scale: 0.95 } } as const;
 
 const FOCUS_ACCENT = "var(--focus-accent)";
 const BREAK_ACCENT = "var(--break-accent)";
 // GeometricVisualizer は canvas に直接色を描くので CSS 変数ではなく実 hex 値を渡す。
-const FOCUS_ACCENT_HEX = "#4c6ef5";
+// Focus フェーズ側は選択中のサウンドテーマ（focusTheme.accent）を使うため、break 用のみ残す。
 const BREAK_ACCENT_HEX = "#3fae8e";
 
 function formatMmSs(ms: number): string {
@@ -52,26 +55,34 @@ export default function PomodoroPage() {
   const changePreset = useTimerStore((s) => s.changePreset);
 
   const { ensureEngine, engineReady, debugInfo } = useSoundscape();
+  const taskItems = useTaskListStore((s) => s.items);
+  const addTaskItem = useTaskListStore((s) => s.addItem);
+  const removeTaskItem = useTaskListStore((s) => s.removeItem);
   const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
   const now = useNow();
   const [showDebug, setShowDebug] = useState(false);
   const [starting, setStarting] = useState(false);
+  // Focus フェーズで鳴らす/描くサウンドテーマ。デフォルトは汎用的な "Work"。
+  const [focusThemeId, setFocusThemeId] = useState<string>("work");
 
   const isIdle = state.phase === "idle" || state.phase === "completed";
   const isBreakPhase = state.phase === "shortBreak" || state.phase === "longBreak";
   const accent = isBreakPhase ? BREAK_ACCENT : FOCUS_ACCENT;
-  const accentHex = isBreakPhase ? BREAK_ACCENT_HEX : FOCUS_ACCENT_HEX;
+
+  const focusTheme = FOCUS_SOUND_THEMES.find((t) => t.id === focusThemeId) ?? FOCUS_SOUND_THEMES[0]!;
 
   // 画面全体（ヘッダーも含む）で共有する背景アートに、このページの状態を反映する。
+  // タイマーリングやボタンの配色（focus-accent/break-accent）は変えず、背景アートの
+  // 見た目（styleId/accentColor）だけを選択中のサウンドテーマに合わせる。
   useEffect(() => {
     setBackgroundArt({
       active: isRunning(state),
-      styleId: isBreakPhase ? "flow" : "network",
-      accentColor: accentHex,
+      styleId: isBreakPhase ? "flow" : focusTheme.visual,
+      accentColor: isBreakPhase ? BREAK_ACCENT_HEX : focusTheme.accent,
       holeRadiusRatio: 0,
-      seed: isBreakPhase ? 2 : 1,
+      seed: isBreakPhase ? 2 : 1 + FOCUS_SOUND_THEMES.indexOf(focusTheme),
     });
-  }, [state, isBreakPhase, accentHex, setBackgroundArt]);
+  }, [state, isBreakPhase, focusTheme, setBackgroundArt]);
 
   const handleStart = async () => {
     setStarting(true);
@@ -96,6 +107,14 @@ export default function PomodoroPage() {
   };
 
   const handleSelectPreset = (preset: PomodoroPreset) => changePreset(preset);
+
+  // Enter で確定したタスクを箇条書きリストに追加し、入力欄（taskHeadline を下書きとして流用）は空にする。
+  const handleAddTaskKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    addTaskItem(state.taskHeadline);
+    setTaskHeadline("");
+  };
 
   return (
     <div className="relative flex flex-1 items-center justify-center px-8 py-12">
@@ -195,19 +214,58 @@ export default function PomodoroPage() {
         <div className="flex w-full max-w-sm flex-col items-center gap-8 lg:items-start lg:pt-4">
           <RoundIndicator currentRound={state.currentRound} totalRounds={state.totalRounds} accentColor={accent} />
 
-          <input
-            type="text"
-            name="taskHeadline"
-            value={state.taskHeadline}
-            onChange={(e) => setTaskHeadline(e.target.value)}
-            placeholder="このセッションで取り組むタスク"
-            className="w-full border-b border-border bg-transparent px-1 py-2 text-center text-sm text-foreground placeholder:text-muted/50 focus:border-foreground focus:outline-none lg:text-left"
-          />
+          <div className="w-full">
+            <input
+              type="text"
+              name="taskHeadline"
+              value={state.taskHeadline}
+              onChange={(e) => setTaskHeadline(e.target.value)}
+              onKeyDown={handleAddTaskKeyDown}
+              placeholder="このセッションで取り組むタスクを追加（Enterで追加）"
+              className="w-full border-b border-border bg-transparent px-1 py-2 text-center text-sm text-foreground placeholder:text-muted/50 focus:border-foreground focus:outline-none lg:text-left"
+            />
+
+            {taskItems.length > 0 && (
+              <ul className="mt-3 flex flex-col gap-1.5">
+                <AnimatePresence initial={false}>
+                  {taskItems.map((item, index) => (
+                    <motion.li
+                      key={`${index}-${item}`}
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.25, ease: "easeOut" }}
+                      className="group flex items-center justify-center gap-2 text-sm text-foreground lg:justify-start"
+                    >
+                      {/* 白い点から始まる箇条書き。 */}
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-white" />
+                      <span className="flex-1 text-center lg:text-left">{item}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeTaskItem(index)}
+                        aria-label={`${item} を削除`}
+                        className="shrink-0 text-xs text-muted/0 transition-colors group-hover:text-muted/60 hover:!text-foreground"
+                      >
+                        ×
+                      </button>
+                    </motion.li>
+                  ))}
+                </AnimatePresence>
+              </ul>
+            )}
+          </div>
 
           {isIdle && (
             <div className="w-full">
               <p className="mb-2 text-[10px] tracking-widest text-muted/60">PRESET</p>
               <PresetSelector selectedId={state.preset.id} accentColor={accent} onSelect={handleSelectPreset} />
+            </div>
+          )}
+
+          {isIdle && (
+            <div className="w-full">
+              <p className="mb-2 text-[10px] tracking-widest text-muted/60">SOUND</p>
+              <FocusThemeSelector selectedId={focusThemeId} onSelect={setFocusThemeId} />
             </div>
           )}
 
