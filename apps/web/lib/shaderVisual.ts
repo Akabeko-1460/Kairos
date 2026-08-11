@@ -168,9 +168,16 @@ void main() {
   vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution) / min(u_resolution.x, u_resolution.y);
   float distFromCenter = length(uv);
 
-  // storyPeriod 秒で全体が呼吸する。0まで落ちきらないので消失しない。
-  float story = 0.62 + 0.38 * sin(u_time * (6.28318530718 / u_storyPeriod));
+  // storyPeriod 秒を主周期に、中間周期(約1/3)と長周期(約2.7倍)を重ねて谷を埋める
+  // （lib/storyPeriods.ts の storyBreath() と同じ式。変更する場合は両方揃えること）。
+  float storyW1 = sin(u_time * (6.28318530718 / u_storyPeriod));
+  float storyW2 = sin(u_time * (6.28318530718 / (u_storyPeriod * 0.33)) + 1.7);
+  float storyW3 = sin(u_time * (6.28318530718 / (u_storyPeriod * 2.7)) + 0.6);
+  float story = clamp(0.56 + 0.26 * storyW1 + 0.11 * storyW2 + 0.09 * storyW3, 0.16, 1.08);
   float warpAmt = u_warpStrength * (0.68 + story * 0.5) * (0.75 + u_bass * 0.7);
+
+  // story とは別に、速い周期で常にきらめく細部レイヤー（谷の瞬間も画面が完全に静止しないように）
+  float shimmer = 0.75 + 0.25 * sin(u_time * (6.28318530718 / (u_storyPeriod * 0.14)) + uv.x * 3.0 - uv.y * 2.0);
 
   vec2 p = uv * u_baseFreq;
   float tt = u_time * u_flowSpeed;
@@ -182,7 +189,8 @@ void main() {
   float mixA = smoothstep(0.15, 0.78, field);
   vec3 color = mix(u_colorA, u_colorB, mixA);
 
-  float highlightAmt = smoothstep(0.55, 0.95, detail) * (0.45 + u_treble * 0.7);
+  // shimmer は story と別周期で動くので、story が谷でもハイライトは完全には沈まない
+  float highlightAmt = smoothstep(0.55, 0.95, detail) * (0.45 + u_treble * 0.7) * shimmer;
   color = mix(color, u_colorC, highlightAmt);
 
   // パターンごとの表情付け
@@ -209,7 +217,8 @@ void main() {
   float holeMask = u_holeRadius > 0.0 ? smoothstep(u_holeRadius * 0.7, u_holeRadius, distFromCenter) : 1.0;
   float glow = pow(clamp(field, 0.0, 1.0), 2.0) * (0.55 + u_amp * 0.9);
 
-  vec3 finalColor = color * (0.32 + glow * 0.95) * vignette * story * holeMask;
+  // story(主+中+長周期)で全体の強弱を、shimmer(story の谷でも沈まない速い周期)で細部の生気を保つ
+  vec3 finalColor = color * (0.34 + glow * 0.9) * vignette * (0.75 + 0.25 * shimmer) * story * holeMask;
   fragColor = vec4(finalColor, 1.0);
 }
 `;

@@ -56,3 +56,57 @@ body {
   -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, black 40%, transparent 90%);
   mask-image: radial-gradient(ellipse 80% 70% at 50% 45%, black 40%, transparent 90%);
 }
+
+/*
+ * 音量スライダー。ブラウザ既定のカラフルな太いバーは主張が強すぎるため、
+ * 細いトラック + 小さいつまみの控えめな見た目にする（docs/02_SPEC.md §6.1: UIは目立たせない）。
+ * つまみの色はJS側で accent-color としてではなく currentColor 経由で渡す想定。
+ */
+.subtle-slider {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--border);
+  outline: none;
+}
+.subtle-slider::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 999px;
+  background: var(--border);
+}
+.subtle-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  margin-top: -4px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.75;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.subtle-slider:hover::-webkit-slider-thumb,
+.subtle-slider:focus-visible::-webkit-slider-thumb {
+  opacity: 1;
+  transform: scale(1.15);
+}
+.subtle-slider::-moz-range-track {
+  height: 2px;
+  border-radius: 999px;
+  background: var(--border);
+}
+.subtle-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: none;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.75;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.subtle-slider:hover::-moz-range-thumb,
+.subtle-slider:focus-visible::-moz-range-thumb {
+  opacity: 1;
+  transform: scale(1.15);
+}

@@ -207,17 +207,18 @@ export default function HomePage() {
           ■
         </button>
 
-        <div className="ml-2 flex flex-1 items-center gap-2">
-          <span className="text-muted">🔊</span>
+        <div className="ml-2 flex items-center gap-2">
+          <span className="text-xs text-muted/70">🔉</span>
           <input
             type="range"
             name="masterVolume"
+            aria-label="音量"
             min={0}
             max={1}
             step={0.01}
             value={volume}
             onChange={(e) => handleVolumeChange(Number(e.target.value))}
-            className="w-full accent-current"
+            className="subtle-slider w-24"
             style={{ color: accent }}
           />
         </div>

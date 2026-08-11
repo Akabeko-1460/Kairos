@@ -95,12 +95,8 @@ export default function PomodoroPage() {
         {showDebug ? "HIDE DEBUG" : "DEBUG"}
       </button>
 
-      <GeometricVisualizer
-        active={isRunning(state)}
-        accentColor={accentHex}
-        styleId={isBreakPhase ? "flow" : "network"}
-        holeRadiusRatio={0.11}
-      />
+      {/* holeRadiusRatio は指定しない: リングの裏側も含めて画面全体にアートを表示する */}
+      <GeometricVisualizer active={isRunning(state)} accentColor={accentHex} styleId={isBreakPhase ? "flow" : "network"} />
 
       <div className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:items-center lg:justify-center lg:gap-20">
         <div className="flex flex-col items-center gap-8">

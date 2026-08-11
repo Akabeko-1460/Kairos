@@ -670,10 +670,72 @@ export const trailsStyle: VisualStyle<TrailsState> = {
   },
 };
 
+// ============================================================================
+// アンビエント塵レイヤー — 各スタイル固有の「物語の周期」とは無関係に、常に控えめに
+// 瞬き続ける粒子。スタイル本体が物語の谷（散らばり待ち・溶解直後など）で静かになる瞬間でも
+// 画面が寂しくならないようにする、全スタイル共通の下support層。
+// ============================================================================
+
+interface DustParticle {
+  nx: number;
+  ny: number;
+  phase: number;
+  speed: number;
+  size: number;
+  driftAngle: number;
+  driftSpeed: number;
+  driftRadiusRatio: number;
+}
+
+function createDust(seed: number, count: number): DustParticle[] {
+  const rng = mulberry32(seed);
+  return Array.from({ length: count }, () => ({
+    nx: rng(),
+    ny: rng(),
+    phase: rng() * Math.PI * 2,
+    speed: 0.35 + rng() * 0.75,
+    size: 0.6 + rng() * 1.3,
+    driftAngle: rng() * Math.PI * 2,
+    driftSpeed: 0.008 + rng() * 0.018,
+    driftRadiusRatio: 0.008 + rng() * 0.018,
+  }));
+}
+
+function drawDust(f: Frame, dust: readonly DustParticle[]): void {
+  const { ctx, w, h, t, minDim, rgb } = f;
+  for (const d of dust) {
+    const twinkle = 0.25 + 0.75 * Math.abs(Math.sin(t * d.speed + d.phase));
+    const dx = Math.cos(t * d.driftSpeed + d.driftAngle) * d.driftRadiusRatio * minDim;
+    const dy = Math.sin(t * d.driftSpeed + d.driftAngle) * d.driftRadiusRatio * minDim;
+    const x = d.nx * w + dx;
+    const y = d.ny * h + dy;
+    ctx.beginPath();
+    ctx.arc(x, y, d.size, 0, Math.PI * 2);
+    ctx.fillStyle = rgba(rgb, 0.06 + twinkle * 0.2);
+    ctx.fill();
+  }
+}
+
+/** 物語の周期に関わらず、いつでも控えめに瞬く塵レイヤーをスタイルに合成する。 */
+function withAmbientDust<S>(style: VisualStyle<S>, dustCount = 24): VisualStyle<{ inner: S; dust: DustParticle[] }> {
+  return {
+    clearMode: style.clearMode,
+    fadeAlpha: style.fadeAlpha,
+    createState(seed) {
+      return { inner: style.createState(seed), dust: createDust(seed + 50021, dustCount) };
+    },
+    draw(f, state) {
+      style.draw(f, state.inner);
+      drawDust(f, state.dust);
+    },
+  };
+}
+
 export const VISUAL_STYLES: Record<VisualStyleId, VisualStyle<unknown>> = {
-  lattice: latticeStyle as VisualStyle<unknown>,
-  network: networkStyle as VisualStyle<unknown>,
-  flow: flowStyle as VisualStyle<unknown>,
+  lattice: withAmbientDust(latticeStyle) as VisualStyle<unknown>,
+  network: withAmbientDust(networkStyle) as VisualStyle<unknown>,
+  flow: withAmbientDust(flowStyle) as VisualStyle<unknown>,
+  // starfield は元から高密度の星を常時描いているため塵レイヤーは不要
   starfield: starfieldStyle as VisualStyle<unknown>,
-  trails: trailsStyle as VisualStyle<unknown>,
+  trails: withAmbientDust(trailsStyle) as VisualStyle<unknown>,
 };

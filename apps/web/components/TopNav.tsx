@@ -19,9 +19,18 @@ export function TopNav() {
         {TABS.map((tab) => {
           const active = tab.href === "/" ? pathname === "/" : pathname.startsWith(tab.href);
           return (
-            <Link key={tab.href} href={tab.href} className="px-1 py-1">
+            <Link key={tab.href} href={tab.href} className="relative px-1 py-1">
+              {/* うっすらもわっと白く光るホバーグロー。ぼかした白い光暈をテキストの後ろに重ねる。 */}
               <motion.span
-                className="inline-block text-sm tracking-wide"
+                aria-hidden
+                className="pointer-events-none absolute inset-[-14px] rounded-full bg-white"
+                style={{ filter: "blur(14px)" }}
+                initial={{ opacity: 0 }}
+                whileHover={{ opacity: 0.22 }}
+                transition={{ duration: 0.35, ease: "easeOut" }}
+              />
+              <motion.span
+                className="relative inline-block text-sm tracking-wide"
                 initial={false}
                 animate={{ color: active ? "#ededf0" : "#8b8b93", y: 0 }}
                 whileHover={{ color: "#ededf0", y: -2 }}
