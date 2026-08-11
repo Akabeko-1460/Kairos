@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+/* docs/02_SPEC.md §6.1: 暗い背景、彩度の低い1〜2色のアクセント。UIそのものが集中を妨げてはならない。 */
+:root {
+  --background: #0a0a0c;
+  --foreground: #ededf0;
+  --muted: #8b8b93;
+  --focus-accent: #4c6ef5;
+  --break-accent: #3fae8e;
+  --surface: #131318;
+  --border: #232329;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-focus-accent: var(--focus-accent);
+  --color-break-accent: var(--break-accent);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+/* 数字の桁揺れ防止（docs/02_SPEC.md §6.1） */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

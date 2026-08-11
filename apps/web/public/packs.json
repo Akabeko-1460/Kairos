@@ -1,0 +1,65 @@
+{
+  "packs": [
+    {
+      "id": "default_warm",
+      "name": "Warm (Placeholder)",
+      "tuning": 440,
+      "ir": { "focus": "/ir/room_small.wav", "break": "/ir/hall_large.wav" },
+      "focus": {
+        "key": "A",
+        "scale": "aeolian",
+        "bpm": 66,
+        "layers": [
+          {
+            "role": "pad",
+            "loopSeconds": 32,
+            "takes": ["/audio/focus/pad_a_01.wav", "/audio/focus/pad_a_02.wav", "/audio/focus/pad_a_03.wav"]
+          },
+          {
+            "role": "texture",
+            "loopSeconds": 20,
+            "mono": true,
+            "takes": ["/audio/focus/pink_air.wav", "/audio/focus/room_hum.wav"]
+          },
+          {
+            "role": "pulse",
+            "loopSeconds": 7.2727,
+            "takes": ["/audio/focus/pulse_66_01.wav", "/audio/focus/pulse_66_02.wav"]
+          },
+          {
+            "role": "cell",
+            "oneShots": [
+              "/audio/focus/bell_a3.wav",
+              "/audio/focus/bell_c4.wav",
+              "/audio/focus/bell_e4.wav",
+              "/audio/focus/bell_g4.wav"
+            ]
+          }
+        ]
+      },
+      "break": {
+        "key": "D",
+        "scale": "lydian",
+        "bpm": null,
+        "layers": [
+          {
+            "role": "pad",
+            "loopSeconds": 30,
+            "takes": ["/audio/break/air_d_01.wav", "/audio/break/air_d_02.wav"]
+          },
+          {
+            "role": "texture",
+            "loopSeconds": 24,
+            "mono": true,
+            "takes": ["/audio/break/rain_leaves.wav", "/audio/break/waves.wav"]
+          },
+          {
+            "role": "cell",
+            "oneShots": ["/audio/break/drop_d4.wav", "/audio/break/drop_f4.wav", "/audio/break/drop_a4.wav"]
+          }
+        ]
+      },
+      "cues": { "phaseEnd": "/audio/cues/soft_chime.wav", "sessionEnd": "/audio/cues/resolve.wav" }
+    }
+  ]
+}

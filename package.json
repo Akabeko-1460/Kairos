@@ -1,0 +1,15 @@
+{
+  "name": "kairos",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @kairos/web dev",
+    "build": "pnpm --filter @kairos/web build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint"
+  }
+}
