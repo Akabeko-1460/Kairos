@@ -7,6 +7,16 @@ import type { LayerSpec, PhaseAutomation, ThemeSoundDefinition } from "./types";
 
 const LOOP_CROSSFADE_TAIL_SEC = 0; // Phase 2 で LoopManager のテイクローテーションと合わせて拡張する
 const DETUNE_RANGE = 0.006; // ±0.3%
+/**
+ * Pad レイヤーの和声ドリフト用LFO周期（秒）。docs/03_ARCHITECTURE.md ADR-006。
+ * Brian Eno "Music for Airports" のテープループ・フェイジング技法（長さの異なるループを
+ * 同時に回し続け、位相がずれていくことで離散的な「切り替わり」なしに組み合わせが
+ * 無限に変化する）を、複数の和声ボイシングテイクの音量LFOとして実装したもの。
+ * 互いに素に近い値にして、組み合わせ周期が極端に長くなるようにする。
+ */
+const PAD_DRIFT_PERIODS_SEC = [43, 59, 71, 83] as const;
+const PAD_DRIFT_BASELINE = 0.55;
+const PAD_DRIFT_DEPTH = 0.45;
 
 /**
  * 1フェーズ分のノードグラフ（docs/04_SOUND_ENGINE.md §2）。
@@ -29,6 +39,8 @@ export class PhaseGraph {
   private readonly ctx: BaseAudioContext;
   private readonly layerGains = new Map<string, GainNode>();
   private readonly sources: AudioBufferSourceNode[] = [];
+  private readonly lfoOscillators: OscillatorNode[] = [];
+  private readonly auxNodes: AudioNode[] = []; // LFO用の中間 GainNode 等。dispose でまとめて切断する。
   private readonly filterNode: BiquadFilterNode;
   private readonly dryGain: GainNode;
   private readonly sendGain: GainNode;
@@ -104,6 +116,15 @@ export class PhaseGraph {
     for (const layer of params.themeDef.layers) {
       if (layer.role === "cell" || layer.role === "cue") continue; // ワンショット系はループ層と別扱い
       if (!layer.takes || layer.takes.length === 0) continue;
+
+      // Pad は「1テイクだけ選ぶ」のではなく、全テイクを同時に鳴らして音量LFOで
+      // 混ざり具合をゆっくりドリフトさせる（ADR-006: ゆったりとした和声/音色の変化）。
+      if (layer.role === "pad" && layer.takes.length > 1) {
+        const buffers = await params.bufferLoader.loadAll(layer.takes);
+        graph.addPadEnsemble(layer, buffers, params.startAt, rngForTakes);
+        continue;
+      }
+
       const takeUrl = layer.takes[Math.floor(rngForTakes() * layer.takes.length)]!;
       const buffer = await params.bufferLoader.load(takeUrl);
       graph.addLoopLayer(layer, buffer, params.startAt, rngForTakes);
@@ -133,6 +154,65 @@ export class PhaseGraph {
     source.connect(layerGain);
     source.start(startAt);
     this.sources.push(source);
+  }
+
+  /**
+   * Pad の全テイクを同時ループ再生し、各テイクの音量を異なる周期の正弦LFOで独立にドリフトさせる。
+   *
+   * 音楽理論的な根拠（docs/03_ARCHITECTURE.md ADR-006）:
+   * - 和声の「離散的な切り替わり」（コードチェンジ、特にケーデンス）は聴取者の予測誤差
+   *   （ERAN等の脳波研究で確認される）を生み、注意を引きやすい
+   * - 一方、連続的でなめらかなドリフトには「切り替わりの瞬間」が存在しないため、
+   *   Eno の言う "ignorable as it is interesting" な質感になる
+   * - 全テイクは同一キー/スケールで作られているため、どの混合比になっても不協和にならない
+   *
+   * `tick()` が動かす `layerGain`（Pad全体の音量＝Ease-in/Sustain/Taper/Wind-downの弧）は
+   * このメソッドで作る個々の `voiceGain` の**上位**にあるので、両者は干渉しない。
+   */
+  private addPadEnsemble(
+    layer: LayerSpec,
+    buffers: readonly AudioBuffer[],
+    startAt: number,
+    rng: () => number,
+  ): void {
+    const layerGain = this.ctx.createGain();
+    layerGain.gain.value = 0;
+    layerGain.connect(this.mixBus);
+    this.layerGains.set(layer.role, layerGain);
+
+    buffers.forEach((buffer, idx) => {
+      const source = this.ctx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.loopStart = 0;
+      source.loopEnd = layer.loopSeconds ?? buffer.duration;
+      // 微小デチューン。同じテイクを別レイヤーで使っても位相が揃って聴こえないようにする。
+      source.playbackRate.value = 1 + (rng() - 0.5) * DETUNE_RANGE;
+
+      const voiceGain = this.ctx.createGain();
+      voiceGain.gain.value = PAD_DRIFT_BASELINE;
+
+      const lfo = this.ctx.createOscillator();
+      lfo.type = "sine";
+      const periodSec = PAD_DRIFT_PERIODS_SEC[idx % PAD_DRIFT_PERIODS_SEC.length]!;
+      lfo.frequency.value = 1 / periodSec;
+
+      const lfoDepth = this.ctx.createGain();
+      lfoDepth.gain.value = PAD_DRIFT_DEPTH;
+
+      // AudioParam への connect は intrinsic value に加算される
+      // （voiceGain.gain = PAD_DRIFT_BASELINE + sin(...) * PAD_DRIFT_DEPTH）。
+      lfo.connect(lfoDepth);
+      lfoDepth.connect(voiceGain.gain);
+      lfo.start(startAt);
+
+      source.connect(voiceGain).connect(layerGain);
+      source.start(startAt);
+
+      this.sources.push(source);
+      this.lfoOscillators.push(lfo);
+      this.auxNodes.push(voiceGain, lfoDepth);
+    });
   }
 
   /** useTimer から約10Hzで呼ばれる。t は 0.0–1.0。 */
@@ -206,6 +286,17 @@ export class PhaseGraph {
       source.disconnect();
     }
     this.sources.length = 0;
+    for (const lfo of this.lfoOscillators) {
+      try {
+        lfo.stop();
+      } catch {
+        // 既に停止済みの場合は無視
+      }
+      lfo.disconnect();
+    }
+    this.lfoOscillators.length = 0;
+    for (const node of this.auxNodes) node.disconnect();
+    this.auxNodes.length = 0;
     this.layerGains.forEach((g) => g.disconnect());
     this.layerGains.clear();
     this.mixBus.disconnect();

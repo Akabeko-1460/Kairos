@@ -293,26 +293,71 @@ function generateTexture(kind, loopSeconds, seed) {
 }
 
 /**
+ * docs/03_ARCHITECTURE.md ADR-006: 「ドラムのキック音で人の活動に合わせたリズムを作る」の実装。
+ * キックはピッチが急速に下降する膜鳴楽器的な音（実際のキックドラムの物理特性に近い）にし、
+ * 単なるクリック音より音楽的な質感を持たせる。ハイハットは拍の裏（オフビート）に薄く添えて
+ * 活動のリズム感を強めるが、Study のような複雑思考向けテーマには使わない
+ * （文献: "work flow" music は low rhythmic complexity が特徴、Georgetown大学の研究）。
+ *
  * @param {number} bpm
  * @param {number} beats
  * @param {number} seed
- * @param {{toneHz?: number, toneGain?: number, noiseGain?: number, decayK?: number, clickSec?: number}} [opts]
+ * @param {{
+ *   toneStartHz?: number, toneEndHz?: number, pitchDropRate?: number,
+ *   toneGain?: number, noiseGain?: number, decayK?: number, clickSec?: number,
+ *   hatGain?: number, hatDecayK?: number, hatHighpassHz?: number, hatOffsetBeat?: number,
+ * }} [opts]
  */
 function generatePulse(bpm, beats, seed, opts = {}) {
-  const { toneHz = 80, toneGain = 0.8, noiseGain = 0.15, decayK = 40, clickSec = 0.03 } = opts;
+  const {
+    toneStartHz = 150,
+    toneEndHz = 60,
+    pitchDropRate = 32,
+    toneGain = 0.8,
+    noiseGain = 0.15,
+    decayK = 42,
+    clickSec = 0.05,
+    hatGain = 0,
+    hatDecayK = 100,
+    hatHighpassHz = 7000,
+    hatOffsetBeat = 0.5,
+  } = opts;
   const rng = mulberry32(seed);
   const loopSeconds = (beats * 60) / bpm;
   const n = Math.round(loopSeconds * SAMPLE_RATE);
   const out = new Float32Array(n);
   const beatSamples = Math.round((60 / bpm) * SAMPLE_RATE);
   const clickLen = Math.round(clickSec * SAMPLE_RATE);
+
+  // キック: 位相を毎サンプル積分し、周波数を toneStartHz から toneEndHz へ指数的に落とす
+  // （固定周波数のサイン波よりも実際のキックドラムに近い「ドスン」という質感になる）。
   for (let beat = 0; beat < beats; beat++) {
     const start = beat * beatSamples;
+    let phase = 0;
     for (let i = 0; i < clickLen && start + i < n; i++) {
-      const env = Math.exp(-decayK * (i / SAMPLE_RATE));
-      out[start + i] += env * (Math.sin(2 * Math.PI * toneHz * (i / SAMPLE_RATE)) * toneGain + (rng() * 2 - 1) * noiseGain);
+      const t = i / SAMPLE_RATE;
+      const freq = toneEndHz + (toneStartHz - toneEndHz) * Math.exp(-pitchDropRate * t);
+      phase += (2 * Math.PI * freq) / SAMPLE_RATE;
+      const env = Math.exp(-decayK * t);
+      out[start + i] += env * (Math.sin(phase) * toneGain + (rng() * 2 - 1) * noiseGain);
     }
   }
+
+  // ハイハット(オフビート)。Work/Move のみ hatGain > 0 を渡して有効化する。
+  if (hatGain > 0) {
+    const hatLen = Math.round(0.06 * SAMPLE_RATE);
+    const hatRaw = new Float32Array(n);
+    for (let beat = 0; beat < beats; beat++) {
+      const start = Math.round((beat + hatOffsetBeat) * beatSamples);
+      for (let i = 0; i < hatLen && start + i < n; i++) {
+        const env = Math.exp(-hatDecayK * (i / SAMPLE_RATE));
+        hatRaw[start + i] += env * (rng() * 2 - 1);
+      }
+    }
+    const hatShaped = onePoleHighpass(hatRaw, SAMPLE_RATE, hatHighpassHz);
+    for (let i = 0; i < n; i++) out[i] += hatShaped[i] * hatGain;
+  }
+
   return peakNormalize(out, 0.6);
 }
 
@@ -359,8 +404,9 @@ async function main() {
   await saveWav("audio/study/pad_03.wav", generatePad("a3", [0, 3, 10], 32, 1103));
   await saveWav("audio/study/texture_pink_a.wav", generateTexture("pink", 20, 1111));
   await saveWav("audio/study/texture_pink_b.wav", generateTexture("pink", 20, 1112));
-  await saveWav("audio/study/pulse_01.wav", generatePulse(68, 8, 1121));
-  await saveWav("audio/study/pulse_02.wav", generatePulse(68, 8, 1122));
+  const studyKick = { toneStartHz: 130, toneEndHz: 55, pitchDropRate: 28, toneGain: 0.7, noiseGain: 0.1, decayK: 36, clickSec: 0.055 };
+  await saveWav("audio/study/pulse_01.wav", generatePulse(68, 8, 1121, studyKick));
+  await saveWav("audio/study/pulse_02.wav", generatePulse(68, 8, 1122, studyKick));
   await saveWav("audio/study/cell_a3.wav", generateOneShot(noteFreq("a3"), 2.2, 1.1, 1131));
   await saveWav("audio/study/cell_c4.wav", generateOneShot(noteFreq("c4"), 2.2, 1.1, 1132));
   await saveWav("audio/study/cell_e4.wav", generateOneShot(noteFreq("e4"), 2.2, 1.1, 1133));
@@ -372,8 +418,12 @@ async function main() {
   await saveWav("audio/work/pad_03.wav", generatePad("a3", [0, 3, 9], 30, 1203));
   await saveWav("audio/work/texture_pink.wav", generateTexture("pink", 20, 1211));
   await saveWav("audio/work/texture_hum.wav", generateTexture("hum", 20, 1212));
-  await saveWav("audio/work/pulse_01.wav", generatePulse(76, 8, 1221, { toneHz: 95 }));
-  await saveWav("audio/work/pulse_02.wav", generatePulse(76, 8, 1222, { toneHz: 95 }));
+  const workKick = {
+    toneStartHz: 150, toneEndHz: 62, pitchDropRate: 32, toneGain: 0.78, noiseGain: 0.13, decayK: 42, clickSec: 0.05,
+    hatGain: 0.09, hatDecayK: 110, hatHighpassHz: 7500, // Study よりわずかに前へ出るリズム（デスクワーク全般向け）
+  };
+  await saveWav("audio/work/pulse_01.wav", generatePulse(76, 8, 1221, workKick));
+  await saveWav("audio/work/pulse_02.wav", generatePulse(76, 8, 1222, workKick));
   await saveWav("audio/work/cell_a3.wav", generateOneShot(noteFreq("a3"), 2.0, 1.2, 1231));
   await saveWav("audio/work/cell_b3.wav", generateOneShot(noteFreq("b3"), 2.0, 1.2, 1232));
   await saveWav("audio/work/cell_c4.wav", generateOneShot(noteFreq("c4"), 2.0, 1.2, 1233));
@@ -384,14 +434,12 @@ async function main() {
   await saveWav("audio/move/pad_02.wav", generatePad("e4", [0, 4, 9], 24, 1302));
   await saveWav("audio/move/texture_air_a.wav", generateTexture("air", 16, 1311));
   await saveWav("audio/move/texture_air_b.wav", generateTexture("air", 16, 1312));
-  await saveWav(
-    "audio/move/pulse_01.wav",
-    generatePulse(120, 16, 1321, { toneHz: 220, toneGain: 0.55, noiseGain: 0.35, decayK: 55, clickSec: 0.05 }),
-  );
-  await saveWav(
-    "audio/move/pulse_02.wav",
-    generatePulse(120, 16, 1322, { toneHz: 220, toneGain: 0.55, noiseGain: 0.35, decayK: 55, clickSec: 0.05 }),
-  );
+  const moveKick = {
+    toneStartHz: 175, toneEndHz: 68, pitchDropRate: 42, toneGain: 0.85, noiseGain: 0.16, decayK: 48, clickSec: 0.05,
+    hatGain: 0.16, hatDecayK: 90, hatHighpassHz: 8500, // 活動的なテンポに合わせたはっきりしたグルーヴ
+  };
+  await saveWav("audio/move/pulse_01.wav", generatePulse(120, 16, 1321, moveKick));
+  await saveWav("audio/move/pulse_02.wav", generatePulse(120, 16, 1322, moveKick));
   const movePluck = { partialGains: [1, 0.5, 0.25], shimmerGain: 0.05 };
   await saveWav("audio/move/cell_e4.wav", generateOneShot(noteFreq("e4"), 1.1, 3.2, 1331, movePluck));
   await saveWav("audio/move/cell_gs4.wav", generateOneShot(noteFreq("g#4"), 1.1, 3.2, 1332, movePluck));

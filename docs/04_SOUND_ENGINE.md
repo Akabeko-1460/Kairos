@@ -341,9 +341,45 @@ src.start(startTime);
 同一素材を繰り返すと、人は数回で「ループだ」と気づきます。これを防ぐため:
 
 1. **クロスフェード・ループ**: ループ末尾 1.5〜3秒を、次テイクの先頭に等パワーで重ねる
-2. **テイクのローテーション**: 3テイク以上を用意し、シード順に巡回。同じテイクが連続しない
+2. **テイクの扱い**: Texture / Pulse はセッション開始時にシードでランダムに1テイクを選び固定する。
+   **Pad だけは全テイクを同時再生し、音量LFOでブレンドをドリフトさせる**（§6.3.1、rev.3.3）
 3. **周期のずらし**: pad(32秒) / texture(20秒) / pulse(7.27秒) のように**互いに素に近い長さ**にする
 4. **微小デチューン**: `playbackRate` を ±0.3% の範囲でテイクごとに変える
+
+#### 6.3.1 Pad Ensemble — 和声/音色のゆったりしたドリフト（`03_ARCHITECTURE.md` ADR-006）
+
+Endel Science / PMC8829886 の文献調査を踏まえ、「BGM性・音楽性を足すが集中を妨げない」ための
+仕掛けとして、Pad 層に **Brian Eno の "Music for Airports" 由来のテープループ・フェイジング
+技法**を実装した。長さの異なるループを同時に回し続けると、離散的な「切り替わり」なしに
+組み合わせが無限に変化する — これを Web Audio の LFO（`OscillatorNode` → `GainNode.gain`）で
+再現している。
+
+```ts
+// packages/audio-engine/src/phase-graph.ts の addPadEnsemble（概念）
+buffers.forEach((buffer, idx) => {
+  const source = ctx.createBufferSource(); // 全テイクを同時ループ再生
+  source.buffer = buffer;
+  source.loop = true;
+
+  const voiceGain = ctx.createGain();
+  voiceGain.gain.value = 0.55; // baseline
+
+  const lfo = ctx.createOscillator();
+  lfo.frequency.value = 1 / PAD_DRIFT_PERIODS_SEC[idx]; // 43/59/71/83秒など、互いに素に近い周期
+  const lfoDepth = ctx.createGain();
+  lfoDepth.gain.value = 0.45;
+  lfo.connect(lfoDepth).connect(voiceGain.gain); // AudioParamへのconnectはvalueに加算される
+
+  source.connect(voiceGain).connect(layerGain); // layerGain は既存の Pad 全体音量（Ease-in/Sustain/Taper/Wind-down）
+});
+```
+
+**なぜコード進行ではなくドリフトなのか**: 和声の研究（ERAN）によれば、予測を外れた
+コード進行は聴取後150–200msで脳波上の「予測誤差」反応を引き起こす。離散的な和声変化
+（特にドミナント→トニックのケーデンス）は「解決」を求める心理的圧力を生み、注意を引く。
+一方、連続的でなめらかなドリフトには「切り替わりの瞬間」が存在しないため、Eno の言う
+"ignorable as it is interesting" な質感になる。全テイクは同一キー/スケールで作られているため、
+どんな混合比になっても不協和にはならない。
 
 ### 6.4 等パワークロスフェード
 
@@ -400,6 +436,22 @@ export class CellScheduler {
 
 音程変更は `playbackRate = 2 ** (semitone / 12)` で行います（再生速度も変わりますが、
 短い減衰音なので気になりません。気になるなら素材を音程ごとに用意してください）。
+
+### 6.5.1 Pulse — キックドラムのグルーヴ（`03_ARCHITECTURE.md` ADR-006）
+
+Pulse 層は元は固定周波数のクリック音だったが、「ドラムのキック音で人の活動に合わせた
+リズムを作る」ための改良として、`scripts/generate-placeholder-audio.mjs` の `generatePulse`
+を以下のように拡張した:
+
+- **ピッチドロップ式キック合成**: 固定周波数のサイン波ではなく、`toneStartHz → toneEndHz`
+  へ位相を毎サンプル積分しながら指数的に下降させる。実際のキックドラム（膜鳴楽器）に近い
+  「ドスン」という質感になる
+- **オフビートのハイハット**（Work / Move のみ）: 拍の裏に軽い高域ノイズバーストを添えて
+  グルーヴ感を出す。Study には追加しない — 文献（Georgetown大学の"work flow"音楽研究）が
+  複雑思考タスクには low rhythmic complexity を支持しているため
+
+いずれもテンポは一定（isochronous）のまま。シンコペーションやフィルは入れない
+（Sun 2025: 急激なリズム/ダイナミクス変化を持つ楽曲は作業フローを阻害する）。
 
 ### 6.6 メモリ管理
 
