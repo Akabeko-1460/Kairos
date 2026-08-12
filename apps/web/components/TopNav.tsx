@@ -5,7 +5,7 @@ import { useFreeplay } from "@/hooks/useFreeplay";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 
 const TABS = [{ href: "/", label: "Home" }] as const;
 const TRAILING_TABS = [{ href: "/credit", label: "Credit" }] as const;
@@ -60,11 +60,14 @@ function NavLink({ href, label, active, onClick }: { href: string; label: string
   );
 }
 
+const MENU_ANCHOR_GAP = 14; // Timers ボタンとメニュー上端の間隔
+
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { mode, stopFreeplay } = useFreeplay();
-  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
+  const timersButtonRef = useRef<HTMLButtonElement>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
 
   const timerToolsActive = TIMER_TOOLS.some((t) => pathname.startsWith(t.href));
   const activeTimerToolHref = TIMER_TOOLS.find((t) => pathname.startsWith(t.href))?.href ?? null;
@@ -76,8 +79,15 @@ export function TopNav() {
     if (mode === "freeplay") stopFreeplay();
   };
 
+  const handleOpenToolsMenu = () => {
+    const rect = timersButtonRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    // メニューはボタンの真下・水平中央に出す（translateX(-50%) で中央合わせする前提の left）。
+    setMenuAnchor({ top: rect.bottom + MENU_ANCHOR_GAP, left: rect.left + rect.width / 2 });
+  };
+
   const handleSelectTool = (href: string) => {
-    setToolsMenuOpen(false);
+    setMenuAnchor(null);
     router.push(href);
   };
 
@@ -95,7 +105,7 @@ export function TopNav() {
             />
           ))}
 
-          <button type="button" className="relative px-1 py-1" onClick={() => setToolsMenuOpen(true)}>
+          <button ref={timersButtonRef} type="button" className="relative px-1 py-1" onClick={handleOpenToolsMenu}>
             <NavItemContent label="Timers" active={timerToolsActive} />
           </button>
 
@@ -106,12 +116,13 @@ export function TopNav() {
       </header>
 
       <AnimatePresence>
-        {toolsMenuOpen && (
+        {menuAnchor && (
           <TimerToolsMenu
             tools={TIMER_TOOLS}
             activeHref={activeTimerToolHref}
+            anchor={menuAnchor}
             onSelect={handleSelectTool}
-            onClose={() => setToolsMenuOpen(false)}
+            onClose={() => setMenuAnchor(null)}
           />
         )}
       </AnimatePresence>

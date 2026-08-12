@@ -20,7 +20,7 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 
 const buttonMotion = { whileHover: { scale: 1.04 }, whileTap: { scale: 0.95 } } as const;
-const DURATION_PRESETS_MIN = [5, 10, 15, 20, 30, 45, 60];
+const DURATION_PRESETS_MIN = [5, 10, 15, 20, 25, 30, 45, 60];
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -44,8 +44,17 @@ export default function TimerPage() {
   const setDurationMs = useCountdownStore((s) => s.setDurationMs);
   const syncToNow = useCountdownStore((s) => s.syncToNow);
 
-  const { engineReady, ensureEngine, playFreeplay, stopFreeplay, toggleFreeplayPause, masterVolume, setMasterVolume } =
-    useFreeplay();
+  const {
+    engineReady,
+    freeplayThemeId,
+    freeplayPlaying,
+    ensureEngine,
+    playFreeplay,
+    stopFreeplay,
+    toggleFreeplayPause,
+    masterVolume,
+    setMasterVolume,
+  } = useFreeplay();
   const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
 
   const [selectedThemeId, setSelectedThemeId] = useState<ThemeId>(SOUND_THEMES[0]!.id);
@@ -54,6 +63,7 @@ export default function TimerPage() {
   const running = isCountdownRunning(state);
   const now = useNow(running);
   const isIdle = state.status === "idle" || state.status === "completed";
+  const isPreviewingSelected = freeplayPlaying && freeplayThemeId === selectedThemeId;
 
   const theme = SOUND_THEMES.find((t) => t.id === selectedThemeId) ?? SOUND_THEMES[0]!;
   const accent = theme.accent;
@@ -69,21 +79,41 @@ export default function TimerPage() {
     }
   }, [running, state, now, syncToNow, stopFreeplay]);
 
+  // 設定画面（idle/completed）では、選択中のサウンドと背景を常に再生しておく
+  // （Home のフリー再生と同じ「選ぶ＝鳴る」体験）。エンジンが既に用意されている
+  // （他画面で一度でもユーザー操作を経ている）場合は、この画面に入った直後にも自動で始める。
+  // AudioContext はユーザー操作起点でしか作れない（ADR-003）ため、まだ未初期化の場合は
+  // テーマ選択やStartのクリックそのものを起点に ensureEngine() する（下記ハンドラ側）。
+  useEffect(() => {
+    if (!engineReady || !isIdle || isPreviewingSelected) return;
+    void playFreeplay(selectedThemeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineReady, isIdle, selectedThemeId]);
+
   useEffect(() => {
     setBackgroundArt({
-      active: running,
+      active: freeplayPlaying,
       styleId: theme.visual,
       accentColor: theme.accent,
       holeRadiusRatio: 0,
       seed: SOUND_THEMES.indexOf(theme) + 1,
     });
-  }, [theme, running, setBackgroundArt]);
+  }, [theme, freeplayPlaying, setBackgroundArt]);
+
+  const handleSelectTheme = async (id: ThemeId) => {
+    setSelectedThemeId(id);
+    if (!isIdle) return;
+    await ensureEngine();
+    await playFreeplay(id);
+  };
 
   const handleStart = async () => {
     setStarting(true);
     try {
       await ensureEngine();
-      await playFreeplay(selectedThemeId);
+      // 設定画面で既に選択中のサウンドをプレビュー再生している場合は、同じテーマへの
+      // クロスフェードをもう一度挟まないようにする（無音の谷ができないようにするため）。
+      if (!isPreviewingSelected) await playFreeplay(selectedThemeId);
       start();
     } finally {
       setStarting(false);
@@ -110,9 +140,10 @@ export default function TimerPage() {
     toggleFreeplayPause();
   };
 
+  // Reset は「カウントダウンを止めて設定画面に戻る」だけの操作。設定画面では音が鳴り続ける
+  // 仕様（上の useEffect）なので、ここでは音を止めない。
   const handleReset = () => {
     reset();
-    stopFreeplay();
   };
 
   return (
@@ -238,7 +269,7 @@ export default function TimerPage() {
           {isIdle && (
             <div className="w-full">
               <p className="mb-2 text-[10px] tracking-widest text-muted/60">SOUND</p>
-              <FocusThemeSelector selectedId={selectedThemeId} onSelect={setSelectedThemeId} themes={SOUND_THEMES} />
+              <FocusThemeSelector selectedId={selectedThemeId} onSelect={handleSelectTheme} themes={SOUND_THEMES} />
             </div>
           )}
 

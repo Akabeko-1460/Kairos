@@ -36,8 +36,16 @@ export default function StopwatchPage() {
   const resume = useStopwatchStore((s) => s.resume);
   const reset = useStopwatchStore((s) => s.reset);
 
-  const { engineReady, ensureEngine, playFreeplay, stopFreeplay, toggleFreeplayPause, masterVolume, setMasterVolume } =
-    useFreeplay();
+  const {
+    engineReady,
+    freeplayThemeId,
+    freeplayPlaying,
+    ensureEngine,
+    playFreeplay,
+    toggleFreeplayPause,
+    masterVolume,
+    setMasterVolume,
+  } = useFreeplay();
   const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
 
   const [selectedThemeId, setSelectedThemeId] = useState<ThemeId>(SOUND_THEMES[0]!.id);
@@ -46,26 +54,41 @@ export default function StopwatchPage() {
   const running = isStopwatchRunning(state);
   const now = useNow(running);
   const isIdle = state.status === "idle";
+  const isPreviewingSelected = freeplayPlaying && freeplayThemeId === selectedThemeId;
 
   const theme = SOUND_THEMES.find((t) => t.id === selectedThemeId) ?? SOUND_THEMES[0]!;
   const accent = theme.accent;
   const elapsed = stopwatchElapsedMs(state, now);
 
+  // 設定画面（idle）では、選択中のサウンドと背景を常に再生しておく（Timer と同じ仕様）。
+  useEffect(() => {
+    if (!engineReady || !isIdle || isPreviewingSelected) return;
+    void playFreeplay(selectedThemeId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engineReady, isIdle, selectedThemeId]);
+
   useEffect(() => {
     setBackgroundArt({
-      active: running,
+      active: freeplayPlaying,
       styleId: theme.visual,
       accentColor: theme.accent,
       holeRadiusRatio: 0,
       seed: SOUND_THEMES.indexOf(theme) + 1,
     });
-  }, [theme, running, setBackgroundArt]);
+  }, [theme, freeplayPlaying, setBackgroundArt]);
+
+  const handleSelectTheme = async (id: ThemeId) => {
+    setSelectedThemeId(id);
+    if (!isIdle) return;
+    await ensureEngine();
+    await playFreeplay(id);
+  };
 
   const handleStart = async () => {
     setStarting(true);
     try {
       await ensureEngine();
-      await playFreeplay(selectedThemeId);
+      if (!isPreviewingSelected) await playFreeplay(selectedThemeId);
       start();
     } finally {
       setStarting(false);
@@ -92,9 +115,10 @@ export default function StopwatchPage() {
     toggleFreeplayPause();
   };
 
+  // Reset は「計測を止めて設定画面に戻る」だけの操作。設定画面では音が鳴り続ける仕様
+  // （上の useEffect）なので、ここでは音を止めない。
   const handleReset = () => {
     reset();
-    stopFreeplay();
   };
 
   return (
@@ -180,7 +204,7 @@ export default function StopwatchPage() {
           {isIdle && (
             <div className="w-full">
               <p className="mb-2 text-[10px] tracking-widest text-muted/60">SOUND</p>
-              <FocusThemeSelector selectedId={selectedThemeId} onSelect={setSelectedThemeId} themes={SOUND_THEMES} />
+              <FocusThemeSelector selectedId={selectedThemeId} onSelect={handleSelectTheme} themes={SOUND_THEMES} />
             </div>
           )}
 

@@ -14,7 +14,7 @@ import {
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-const DEFAULT_DURATION_MS = 10 * 60_000; // 10分
+const DEFAULT_DURATION_MS = 25 * 60_000; // 25分（Pomodoro Classic の Focus 長に合わせた既定値）
 
 interface CountdownStore {
   state: CountdownState;
