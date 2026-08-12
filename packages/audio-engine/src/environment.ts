@@ -135,7 +135,7 @@ const FATIGUE_FLOOR = 0.82; // pulse/cellDensity の下限倍率（-18%）
 
 /**
  * 長時間つけっぱなしにした際の聴取疲労を避けるための、ごく緩やかな刺激の減衰。
- * 「継続的な刺激への曝露は過剰になりうる」という知見（`環境による適切な音の変化.md` の
+ * 「継続的な刺激への曝露は過剰になりうる」という知見（`docs/research/environment-adaptive-sound.md` の
  * 確率共鳴・処理流暢性の議論、および ADR-008 の Sleep 設計と同じ方向性）を、
  * Study/Work/Move のような Focus 系テーマにも控えめに適用する。
  */

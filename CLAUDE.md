@@ -123,8 +123,8 @@
       追加済み。エンジンはページ遷移をまたいで単一の AudioContext を共有するシングルトン設計
       （`apps/web/lib/soundscapeRuntime.ts`）。Break フェーズで無音になるバグ（フェーズ変化検出後に
       実際の遷移呼び出しを忘れていた）を発見・修正済み。
-      **rev.3（本セッション）**: `docs/deep-research-report_chatGPT.md` /
-      `集中力を高める音の文献調査_gemini.md` の文献調査をもとに、サウンドを「フェーズ(focus/break)」
+      **rev.3（本セッション）**: `docs/research/sound-environment-focus-chatgpt.md` /
+      `docs/research/focus-sound-literature-review-gemini.md` の文献調査をもとに、サウンドを「フェーズ(focus/break)」
       単位から「テーマ(5種)」単位に再構築（`docs/03_ARCHITECTURE.md` ADR-004）。Study/Work/Move/
       Relax/Sleep が音響的にも完全に別物になった（Home の選択にも Pomodoro の Focus テーマ選択にも
       実際に反映される。旧: 見た目の色だけが違って音は同一という状態だった）。ノイズ色を
@@ -162,7 +162,7 @@
       （`pause()` と揃えた。Home/停止ボタンで音がすっと減衰して止まるようにする要望）。
       TopNav（Home/Pomodoro/Credit）のホバー時の文字まわりの発光を拡大・強化
       （広がり幅・ぼかし半径・最大不透明度をいずれも底上げ）。
-      **rev.3.6**: `deep-research-report_relux_chatGPT.md` を踏まえ Relax/Sleep を全面
+      **rev.3.6**: `docs/research/relax-sleep-sound-chatgpt.md` を踏まえ Relax/Sleep を全面
       再構築（`docs/03_ARCHITECTURE.md` ADR-008）。両テーマに「音楽性をある程度」持たせる
       ため、打楽器的キックとは別の柔らかい旋律アルペジオを奏でる `generateArpeggioPulse`
       を新設し、pulse レイヤーとして追加（Relax: D Lydian 70bpm、Sleep: D Aeolian低音域
@@ -290,6 +290,98 @@
       Homeと同じ単一の3秒クロスフェードになる。chrome-devtools MCPでPomodoroのSOUND切替時の
       音声信号を150ms間隔でサンプリングし、無音への落ち込みや不連続なジャンプが無いことを
       確認済み。
+      **rev.6.7**: 「一般的なNext.jsの適切なフォルダ構成に整理してほしい」という要望を受け、
+      実装内容を一切変更せずファイル整理のみ実施した。`apps/web`（`app/`/`components/`/`hooks/`/
+      `lib/`/`public/`）自体は元から標準的な App Router 構成だったため変更なし。リポジトリ直下に
+      散らかっていた文献調査Markdown7本（ChatGPT/Gemini Deep Research の出力、日本語ファイル名
+      と英語ファイル名が混在）を `docs/research/` に集約し、内容に基づいた英語kebab-caseの名前
+      （例: `deep-research-report_chatGPT.md` → `docs/research/sound-environment-focus-chatgpt.md`）
+      へ改名。改名に伴い、コード内コメント・ADR文書からの参照（`CLAUDE.md`/`03_ARCHITECTURE.md`/
+      `04_SOUND_ENGINE.md`/`packages/audio-engine/src/{types,automation,environment}.ts`/
+      `scripts/generate-placeholder-audio.mjs`）もすべて新パスに追従させた
+      （`リラックスと睡眠用の音.md` と `環境による適切な音の変化.md` は中身が完全に同一だが、
+      未参照ファイルを断りなく削除しない方針のため両方とも保持し `relax-sleep-sound.md` /
+      `environment-adaptive-sound.md` として残した）。`docs/README.md` に `research/` の索引を追加。
+      未使用のブランディング素材2点（`Kairos.ico`/`Kairos_icon.png`、コードから未参照）は
+      `assets/branding/` へ移動。`packages/core`・`packages/audio-engine` は既に
+      フラットな `src/` 構成で pure TS パッケージとして適切だったため対象外。
+      移動・改名後に `pnpm --filter @kairos/core test`（29/29）・
+      `pnpm --filter @kairos/audio-engine test`（48/48）・`pnpm --filter @kairos/web build`・
+      `pnpm --filter @kairos/web lint` を実行し、いずれも成功することを確認済み
+      （差分はコメント文字列とファイル配置のみで、実装ロジックへの変更はゼロ）。
+      **rev.6.8**: 「文献調査のうち使用したものをCreditに記載してほしい」という要望を受け、
+      `docs/research/` の7本のうち、実際に ADR・ソースコメントから設計根拠として引用されている
+      4本（`sound-environment-focus-chatgpt.md`/`focus-sound-literature-review-gemini.md`/
+      `relax-sleep-sound-chatgpt.md`/`environment-adaptive-sound.md`）だけを選び、
+      `apps/web/app/credit/page.tsx` に新セクション「サウンド設計の文献調査」として追加した。
+      調査段階で集めたが設計に直接反映されなかった3本（`bgm-productivity-chatgpt.md`/
+      `focus-bgm-literature-review.md`/`relax-sleep-sound.md`）は掲載対象外とした
+      （`docs/research/` 内での参照有無は `docs/README.md` の索引と、リポジトリ全体を
+      対象にした文字列検索で確認済み）。
+      **rev.6.9**: 3件の要望を反映。(1) Pomodoro の Preset をビルトイン（Classic/Deep）も
+      カスタムと同じ右クリック削除に対応させた。ビルトインは定数のため配列から取り除くのではなく
+      `usePresetsStore`（`apps/web/hooks/usePresets.ts`）に永続化した `hiddenBuiltinIds` へ載せて
+      非表示にする方式にした。最後の1件は削除不可（Pomodoroが選べなくなるため）にし、
+      選択中のプリセットが削除されて一覧に存在しなくなった場合は先頭のプリセットへ自動フォール
+      バックする（`PresetSelector.tsx`）。(2) スマホ・タブレット向けのレスポンシブ対応。
+      `TimerRing`（`apps/web/components/TimerRing.tsx`）が固定340pxで、Galaxy/Xperia等の
+      横幅360px級の実機で `px-8` の余白と合わせて横スクロールが発生しうる状態だったのが
+      核心的な不具合だったため、SVGをviewBox化した上で表示サイズを
+      `min(340px, calc(100vw - 88px))`（414px超のiPad/PCでは常に従来通り340px）にし、
+      時刻表示のフォントサイズも`clamp()`で追従させた。あわせてPomodoro/Timer/Stopwatch/Home/
+      Creditの左右余白を`px-5 sm:px-8`に、音量バーの固定幅コンテナを`w-full max-w-[252px]`に
+      変更し、`body`に`overflow-x:hidden`を安全策として追加した。chrome-devtools MCPで
+      360×780・375×812・768×1024の3幅を確認し、横スクロールが発生しないことを検証済み。
+      (3) 「Timers経由のPomodoro/Timer選択などの画面切り替えが滑らかでない」という指摘を
+      調査した結果、前面のコンテンツは`PageTransition`で滑らかにフェードしている一方、
+      全画面を覆う背景アート（`GeometricVisualizer`/`ShaderVisualizer`）は`styleId`/
+      `accentColor`が変わるとWebGL/canvasの状態を作り直すため色・模様が瞬時に切り替わっており、
+      これが「滑らかでない」の実体だった。音のクロスフェードと同じ発想を背景にも適用し、
+      `BackgroundArt.tsx`で直近2世代の背景を透明度でクロスフェード（0.9秒）させるよう変更した
+      （Reactの「propsの変化に合わせてレンダー中にstateを調整する」公式パターンを使い、
+      effect内での同期的なsetStateを避けている。`react-hooks/set-state-in-effect`
+      のESLintルールに抵触したため）。chrome-devtools MCPでSOUND切替時に背景レイヤーが
+      2枚同時にopacity遷移し、約0.9秒後に1枚へ収束することを確認済み。ついでにHomeの
+      サブタイトルを「動作に合わせて、生成されるサウンドを選んでください」に変更し、
+      Pomodoroのタスク追加欄を`<textarea>`化してShift+Enterで改行できるようにし
+      （通常のEnterのみ追加・確定）、プレースホルダーも操作説明入りの文言に変更した上で、
+      スマホ幅（`apps/web/hooks/useMediaQuery.ts`を新設、`useSyncExternalStore`で
+      SSR安全に実装）では操作説明部分を省いた短い文言に出し分けるようにした。
+      **rev.6.10**: rev.6.9のタスク追加欄の2つの副作用を修正。(1) Shift+Enterで入れた改行が
+      表示時に半角スペースに潰れていたのは、`TaskRow`（`apps/web/app/pomodoro/page.tsx`）が
+      `truncate`（`white-space: nowrap`）でタスク文を表示していたため。(2) 長い文字列が
+      折り返されず省略記号で切れていたのも同じ`truncate`が原因。`whitespace-pre-wrap
+      break-words`（+ flexの子要素が縮まないデフォルトを解除する`min-w-0`）に差し替えて
+      両方を解決した。折り返して複数行になりうる以上、旧来の「チェックボックスごと一直線に
+      引く」絶対配置の取り消し線演出（単一行前提）は複数行を正しく貫けないため撤去し、
+      各行に自然にかかるネイティブの`line-through`に置き換えた（チェック時のチェックマーク
+      アイコン自体は従来通り）。チェックボックスの縦位置も`items-center`から`items-start`
+      （+`mt-0.5`）にし、複数行に伸びた文章の1行目と揃うようにした。chrome-devtools MCPで
+      改行入りタスク・長文タスクの両方を実際に追加し、`textContent`に`\n`が保持されていること
+      と`white-space: pre-wrap`/`text-decoration-line: line-through`が適用されていることを
+      確認済み。
+      **rev.6.11**: `CustomPresetModal`（Pomodoroの「+」カスタムプリセット作成）の数値入力
+      （Focus分・Break分・ラウンド数）から、クリックで増減できるスピンボタンの見た目だけを
+      CSSで消した（`.no-spinner`、`globals.css`。`type="number"`はそのまま維持している
+      ため、矢印キーでのincrement/decrementはブラウザのネイティブ挙動として従来通り残る）。
+      加えてクリック（フォーカス）した瞬間に表示を空にして自由に半角数字を打ち込めるように
+      し、何も入力せずに他へフォーカスを移した場合は親のstateを一切更新していないため
+      表示が自動的に元の値へ戻るようにした（`NumberField`内にローカルの下書きstateを持たせ、
+      有効な数値が入力された時だけ親へ`onChange`する設計。空/不正な入力のままフォーカスが
+      外れた場合はコミットされない）。chrome-devtools MCPでクリック時に空になること、
+      入力後に確定した値が残ること、空のままフォーカスを外すと元の値に戻ること、
+      矢印キーでの増減が引き続き機能することを確認済み。
+      **rev.6.12**: rev.6.11の数値入力の挙動を`apps/web/components/NumberInput.tsx`として
+      切り出し、`CustomPresetModal`とTimerのカスタム分数入力（`apps/web/app/timer/page.tsx`、
+      従来は素の`<input type="number">`に個別のonChangeロジックを書いていた）の両方で共有する
+      ようにした（「今の修正はTimerの時間設定にも適応してください」という要望）。
+      あわせて`CustomPresetModal`の「長い休憩までのラウンド数」ラベルを「ラウンド数」に短縮。
+      Creditページの「使い方」がHome/Pomodoroの2項目のみで、Timer/Stopwatch追加（rev.6）
+      以降ずっと未反映だったのを機に更新し、Timers配下がPomodoro/Timer/Stopwatchの3択で
+      あること、Presetが右クリックでビルトイン・カスタムとも削除できること、Timer/Stopwatch
+      が「選ぶ＝鳴る」であることを追記した。chrome-devtools MCPでTimerのカスタム分数入力が
+      CustomPresetModalと同じ挙動（クリックで空になる/入力値の即時反映/空のままフォーカスを
+      外すと元の値に戻る）をすることを確認済み。
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
 

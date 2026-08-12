@@ -8,8 +8,8 @@
  *
  * rev.3: 5テーマ（Study/Work/Move/Relax/Sleep）を個別の音響定義として持つようになった
  * （docs/04_SOUND_ENGINE.md ADR-004）。このスクリプトもテーマごとにパラメータを分けて生成する。
- * 各テーマの設計根拠は `docs/deep-research-report_chatGPT.md` と
- * `集中力を高める音の文献調査_gemini.md` を参照（docs/04_SOUND_ENGINE.md §4 に要約を転記済み）。
+ * 各テーマの設計根拠は `docs/research/sound-environment-focus-chatgpt.md` と
+ * `docs/research/focus-sound-literature-review-gemini.md` を参照（docs/04_SOUND_ENGINE.md §4 に要約を転記済み）。
  *
  * 本番のAI生成ステムに差し替える際は docs/04_SOUND_ENGINE.md §7 の手順に従い、
  * OGG Vorbis で書き出して docs/ASSET_LICENSES.md に記録すること。
@@ -113,7 +113,7 @@ function pinkNoise(rng, n) {
 
 /**
  * ブラウン(レッド)ノイズ（1/f²、-6dB/オクターブ）。白色雑音のリーキー積分で作る。
- * 集中力を高める音の文献調査_gemini.md §1.1: 「過覚醒の鎮静・深い分析的作業への没入」— Sleep テーマの主texture。
+ * docs/research/focus-sound-literature-review-gemini.md §1.1: 「過覚醒の鎮静・深い分析的作業への没入」— Sleep テーマの主texture。
  */
 function brownNoise(rng, n) {
   const out = new Float32Array(n);
@@ -546,7 +546,7 @@ function generateOneShot(freqHz, durationSec, decayRate, seed, opts = {}) {
  * docs/03_ARCHITECTURE.md ADR-008: Relax/Sleep に「音楽性」を持たせるための柔らかい旋律パルス。
  * Study/Work/Move の打楽器的なキック（generatePulse）とは異なり、スケール内の音程を辿る
  * 短いフレーズをフェルトピアノ/マレット的な音色（generateOneShot と同じ倍音構成）で
- * 繰り返しループする。文献（deep-research-report_relux_chatGPT.md）:
+ * 繰り返しループする。文献（docs/research/relax-sleep-sound-chatgpt.md）:
  * 「反復性や予測可能性が高いリズムが安定感を高める」「60–80BPM程度の柔らかく単純な旋律」。
  *
  * @param {string} rootNote
@@ -648,7 +648,7 @@ async function main() {
     toneStartHz: 150, toneEndHz: 62, pitchDropRate: 32, toneGain: 0.78, noiseGain: 0.13, decayK: 42, clickSec: 0.05,
     // ADR-007: ハイハットをさらに控えめに(旧 0.09 → 0.06)。作曲・ライティングのような
     // 言語/音楽処理そのものを行うタスクでは、リズムの主張が強すぎるとかえって干渉しうる
-    // （集中力を高める音の文献調査_gemini.md §3.1、無関連発話効果の音楽家版）。
+    // （docs/research/focus-sound-literature-review-gemini.md §3.1、無関連発話効果の音楽家版）。
     hatGain: 0.06, hatDecayK: 110, hatHighpassHz: 7500,
   };
   // ADR-009: Endel "Deep Work" は規則的な拍を積極的に使う（endel.io/science:
