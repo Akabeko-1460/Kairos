@@ -239,6 +239,23 @@
       `"classic" | "deep"` の2種のみになった。カスタムプリセットの右クリック削除
       （赤いゴミ箱アイコン→クリックで削除、`PresetSelector.tsx`）は既存実装のまま維持
       （ビルトインの Classic/Deep は右クリックしても反応しない設計を継続）。
+      **rev.6.4**: rev.6.2 の修正後も「サーバー再起動・別ブラウザでもTimers設定画面で音が
+      鳴らない」という報告が続いたため、`SoundscapeEngine.init()`（`packages/audio-engine/
+      src/engine.ts`）の自動再生ポリシー対策を強化した。従来は `AudioContext.resume()` の
+      完了を無条件に `await` しており、SPA遷移でジェスチャーの連続性が切れた場合に
+      resume() が pending のまま解決しないブラウザでは `init()` 自体が無期限に止まり、
+      `engineReady` が永遠に true にならず「何をしても無反応」に見えていた可能性がある
+      （自動化ブラウザでの計測ではこの状態を安定再現できなかったため、原因は推定を含む）。
+      対策として (1) resume() の待機に1.5秒のタイムアウトを設け、`init()` 自体は必ず完了
+      させるようにした。(2) resume() 後も `state !== "running"` のままなら、そのページ上で
+      次に起きる実際の操作（pointerdown/keydown/touchend）で確実に `resume()` を再試行する
+      listener を張った（`armGestureUnlock`。Chromeはブラウザ側でこれに近い自動再開を行うが、
+      Firefox/Safari 等は resume() 呼び出し自体がジェスチャーのコールスタック内にあることを
+      要求するため、明示的に張っている）。(3) Timer/Stopwatch設定画面に、
+      `debugInfo.contextState` が `"suspended"` のままなら理由を示す小さなヒント文言と、
+      `playFreeplay`/`ensureEngine` が例外を投げた場合に表示するエラーメッセージを追加し、
+      これまで `console.error` のみで利用者には何も見えなかった失敗を可視化した
+      （`apps/web/hooks/useFreeplay.ts` に `debugInfo` を追加露出）。
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
 

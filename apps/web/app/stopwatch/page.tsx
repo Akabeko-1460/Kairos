@@ -38,6 +38,7 @@ export default function StopwatchPage() {
 
   const {
     engineReady,
+    debugInfo,
     freeplayThemeId,
     freeplayPlaying,
     ensureEngine,
@@ -50,11 +51,16 @@ export default function StopwatchPage() {
 
   const [selectedThemeId, setSelectedThemeId] = useState<ThemeId>(SOUND_THEMES[0]!.id);
   const [starting, setStarting] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
 
   const running = isStopwatchRunning(state);
   const now = useNow(running);
   const isIdle = state.status === "idle";
   const isPreviewingSelected = freeplayPlaying && freeplayThemeId === selectedThemeId;
+  // ブラウザの自動再生ポリシーで AudioContext が suspended のまま留め置かれている状態。
+  // この画面上の次のクリック/タップで自動的に再開する保険（SoundscapeEngine.armGestureUnlock）
+  // が張ってあるので、ここではその間の理由を利用者に示すだけに留める。
+  const audioSuspended = engineReady && debugInfo?.contextState === "suspended";
 
   const theme = SOUND_THEMES.find((t) => t.id === selectedThemeId) ?? SOUND_THEMES[0]!;
   const accent = theme.accent;
@@ -72,8 +78,10 @@ export default function StopwatchPage() {
         await ensureEngine();
         if (cancelled) return;
         await playFreeplay(selectedThemeId);
+        if (!cancelled) setAudioError(null);
       } catch (err) {
         console.error("[Kairos] SoundscapeEngine error:", err);
+        if (!cancelled) setAudioError(err instanceof Error ? err.message : String(err));
       }
     })();
     return () => {
@@ -94,8 +102,14 @@ export default function StopwatchPage() {
   const handleSelectTheme = async (id: ThemeId) => {
     setSelectedThemeId(id);
     if (!isIdle) return;
-    await ensureEngine();
-    await playFreeplay(id);
+    try {
+      await ensureEngine();
+      await playFreeplay(id);
+      setAudioError(null);
+    } catch (err) {
+      console.error("[Kairos] SoundscapeEngine error:", err);
+      setAudioError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   const handleStart = async () => {
@@ -103,7 +117,11 @@ export default function StopwatchPage() {
     try {
       await ensureEngine();
       if (!isPreviewingSelected) await playFreeplay(selectedThemeId);
+      setAudioError(null);
       start();
+    } catch (err) {
+      console.error("[Kairos] SoundscapeEngine error:", err);
+      setAudioError(err instanceof Error ? err.message : String(err));
     } finally {
       setStarting(false);
     }
@@ -114,6 +132,10 @@ export default function StopwatchPage() {
     try {
       await ensureEngine();
       await playFreeplay(selectedThemeId);
+      setAudioError(null);
+    } catch (err) {
+      console.error("[Kairos] SoundscapeEngine error:", err);
+      setAudioError(err instanceof Error ? err.message : String(err));
     } finally {
       setStarting(false);
     }
@@ -212,6 +234,13 @@ export default function StopwatchPage() {
               </>
             )}
           </div>
+
+          {isIdle && audioSuspended && (
+            <p className="max-w-xs text-center text-[11px] text-muted/70">
+              🔇 サウンドは準備できています。ブラウザの再生制限のため、画面をどこか一度タップすると鳴り始めます。
+            </p>
+          )}
+          {audioError && <p className="max-w-xs text-center text-[11px] text-red-400">サウンドの再生に失敗しました: {audioError}</p>}
         </div>
 
         <div className="flex w-full max-w-sm flex-col items-center gap-8 lg:items-start">

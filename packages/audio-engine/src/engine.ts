@@ -47,7 +47,21 @@ export class SoundscapeEngine {
     this.ctx = ctx;
 
     if ("resume" in ctx) {
-      await (ctx as AudioContext).resume();
+      // 呼び出し元のジェスチャーがSPA遷移等で失われていた場合、resume() が長時間
+      // pending のまま解決しないブラウザがある。init() 自体をそれで止め続けると
+      // engineReady が永遠に true にならず、UIが「何をしても無反応」に見えてしまうため、
+      // 一定時間で見切りをつけて先へ進む（resume自体は裏で解決を試み続ける）。
+      await Promise.race([
+        (ctx as AudioContext).resume().catch(() => undefined),
+        new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+      ]);
+      // まだ suspended のままなら、このページ上での次の実操作で確実に再開させる保険を張る。
+      // Chrome は自動再生ポリシー上この再開をブラウザ側で行うことがあるが、Firefox/Safari 等は
+      // resume() 呼び出し自体がジェスチャーのコールスタック内にあることを要求するため、
+      // アプリ側でも明示的に listener を張っておく。
+      if ((ctx as AudioContext).state !== "running") {
+        this.armGestureUnlock(ctx as AudioContext);
+      }
     }
 
     this.masterGain = ctx.createGain();
@@ -67,6 +81,24 @@ export class SoundscapeEngine {
         ? new IntervalTicker()
         : new WorkerTicker();
     this.ticker.start(() => this.serviceCellScheduling());
+  }
+
+  /**
+   * suspended のまま init() を抜けた AudioContext を、このページ上で次に起きる実際の
+   * ユーザー操作（クリック・タップ・キー入力）で必ず再開させる。running になった時点で
+   * listener を外す。SSR環境では document が無いため何もしない。
+   */
+  private armGestureUnlock(ctx: AudioContext): void {
+    if (typeof document === "undefined") return;
+    const events: Array<"pointerdown" | "keydown" | "touchend"> = ["pointerdown", "keydown", "touchend"];
+    const retry = () => {
+      if (ctx.state === "running") {
+        events.forEach((ev) => document.removeEventListener(ev, retry));
+        return;
+      }
+      void ctx.resume().catch(() => undefined);
+    };
+    events.forEach((ev) => document.addEventListener(ev, retry, { passive: true }));
   }
 
   async loadPack(pack: SoundPack): Promise<void> {
