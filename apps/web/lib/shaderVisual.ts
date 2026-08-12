@@ -47,7 +47,7 @@ export const SHADER_PALETTES: Record<VisualStyleId, ShaderPalette> = {
     colorB: hexToUnit("#5b3fd6"),
     colorC: hexToUnit("#c9b6ff"),
     baseFreq: 1.9,
-    warpStrength: 0.7,
+    warpStrength: 0.58,
     flowSpeed: 0.06,
     storyPeriodSec: STORY_PERIOD_SEC.network,
     patternType: 1,
@@ -193,9 +193,9 @@ void main() {
     float gridLine = smoothstep(0.02, 0.0, grid) * smoothstep(0.2, 0.75, field) * 0.4;
     color += u_colorC * gridLine;
   } else if (u_patternType == 1) {
-    // Work: 回路のような細い光の筋
+    // Work: 回路のような細い光の筋（艶やかな波紋に見えすぎないよう控えめに）
     float vein = smoothstep(0.6, 0.63, detail) - smoothstep(0.63, 0.66, detail);
-    color += u_colorC * vein * (0.6 + u_amp * 0.6);
+    color += u_colorC * vein * (0.45 + u_amp * 0.45);
   } else if (u_patternType == 3) {
     // Sleep: 疎らな瞬き（星）を重ねる
     float tw = sparkle(uv * 9.0 + 3.1, u_time);

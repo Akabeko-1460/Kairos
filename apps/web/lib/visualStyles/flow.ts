@@ -136,7 +136,7 @@ export const flowStyle: VisualStyle<FlowState> = {
     // 張り詰めた多角形（緊張の象徴）。ゆっくり回転し、溶解フェーズで消えていく
     if (polyAlpha > 0.01) {
       const sides = 6;
-      const radius = Math.max(hole + minDim * 0.05, minDim * 0.2) * (0.94 + amp * 0.1);
+      const radius = Math.max(hole + minDim * 0.04, minDim * 0.17) * (0.94 + amp * 0.1);
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(t * 0.03);
@@ -149,8 +149,8 @@ export const flowStyle: VisualStyle<FlowState> = {
         else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.strokeStyle = rgba(rgb, 0.12 * polyAlpha * breath);
-      ctx.lineWidth = Math.max(1, minDim * 0.0018);
+      ctx.strokeStyle = rgba(rgb, 0.045 * polyAlpha * breath);
+      ctx.lineWidth = Math.max(0.7, minDim * 0.0011);
       ctx.stroke();
       ctx.restore();
     }
@@ -188,7 +188,7 @@ export const flowStyle: VisualStyle<FlowState> = {
     else secondaryAlpha = 1 - easeInOutCubic((secondaryPhase - 0.7) / 0.3);
     if (secondaryAlpha > 0.01) {
       const sides = 10;
-      const radius = Math.max(hole + minDim * 0.08, minDim * 0.27) * (0.96 + amp * 0.08);
+      const radius = Math.max(hole + minDim * 0.07, minDim * 0.24) * (0.96 + amp * 0.08);
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(-t * 0.018);
@@ -201,8 +201,8 @@ export const flowStyle: VisualStyle<FlowState> = {
         else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.strokeStyle = rgba(rgb, 0.07 * secondaryAlpha * breath);
-      ctx.lineWidth = Math.max(0.8, minDim * 0.0014);
+      ctx.strokeStyle = rgba(rgb, 0.025 * secondaryAlpha * breath);
+      ctx.lineWidth = Math.max(0.6, minDim * 0.0009);
       ctx.stroke();
       ctx.restore();
     }
