@@ -49,6 +49,11 @@ interface SoundscapeRuntimeStore {
    */
   freeplayCategoryId: string | null;
   freeplayPlaying: boolean;
+  /**
+   * マスター音量。Home/Pomodoro どちらの音量バーからも同じ値を読み書きする
+   * （エンジンはページを跨いだシングルトンなので、音量もページ間で共有するのが自然）。
+   */
+  masterVolume: number;
 
   ensureEngine: () => Promise<SoundscapeEngine>;
   /** Pomodoro 画面が Start されたら呼ぶ。以後このループがタイマー駆動でエンジンを制御する。 */
@@ -147,6 +152,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     freeplayPhase: null,
     freeplayCategoryId: null,
     freeplayPlaying: false,
+    masterVolume: 0.8,
 
     ensureEngine: async () => {
       if (engine) return engine;
@@ -157,6 +163,9 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
       const pack = packs[0];
       if (!pack) throw new Error("packs.json に SoundPack が1つも定義されていません。");
       await created.loadPack(pack);
+      // Start前・Pomodoro開始前に音量バーが操作されている場合があるので、
+      // エンジン生成のタイミングでその時点のマスター音量を適用する。
+      created.setMasterVolume(get().masterVolume);
       engine = created;
       set({ engineReady: true });
       startLoopOnce();
@@ -207,6 +216,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     },
 
     setMasterVolume: (v) => {
+      set({ masterVolume: v });
       engine?.setMasterVolume(v);
     },
   };

@@ -13,7 +13,9 @@ const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
 export function TimerRing({ progress, label, timeLabel, accentColor }: TimerRingProps) {
-  const offset = CIRCUMFERENCE * (1 - Math.min(1, Math.max(0, progress)));
+  // 残り時間を表すリングにするため、開始時（progress=0）は全周を色で囲み、
+  // 時間の経過（progress→1）とともに描画範囲を減らして消えていくようにする。
+  const offset = CIRCUMFERENCE * Math.min(1, Math.max(0, progress));
 
   return (
     <div className="relative" style={{ width: SIZE, height: SIZE }}>

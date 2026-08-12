@@ -14,6 +14,7 @@ export function useFreeplay() {
   const toggleFreeplayPause = useSoundscapeRuntime((s) => s.toggleFreeplayPause);
   const regenerateFreeplay = useSoundscapeRuntime((s) => s.regenerateFreeplay);
   const stopFreeplay = useSoundscapeRuntime((s) => s.stopFreeplay);
+  const masterVolume = useSoundscapeRuntime((s) => s.masterVolume);
   const setMasterVolume = useSoundscapeRuntime((s) => s.setMasterVolume);
 
   return {
@@ -27,6 +28,7 @@ export function useFreeplay() {
     toggleFreeplayPause,
     regenerateFreeplay,
     stopFreeplay,
+    masterVolume,
     setMasterVolume,
   };
 }

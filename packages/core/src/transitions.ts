@@ -42,13 +42,15 @@ interface NextPhase {
 function nextPhaseFrom(state: TimerState): NextPhase {
   const { phase, currentRound, totalRounds, preset } = state;
   if (phase === "focus") {
+    // 最終ラウンドの作業が終わったら休憩を挟まずそのまま完了にする（最後の長い/短い休憩は不要）。
+    if (currentRound >= totalRounds) {
+      return { phase: "completed", nextRound: currentRound };
+    }
     const long = isLongBreakRound(currentRound, preset.roundsBeforeLongBreak);
     return { phase: long ? "longBreak" : "shortBreak", nextRound: currentRound };
   }
   if (phase === "shortBreak" || phase === "longBreak") {
-    if (currentRound >= totalRounds) {
-      return { phase: "completed", nextRound: currentRound };
-    }
+    // 上の分岐により、休憩フェーズは最終ラウンドでは発生しなくなったため、ここは常に次のFocusへ進む。
     return { phase: "focus", nextRound: currentRound + 1 };
   }
   return { phase: state.phase, nextRound: currentRound };

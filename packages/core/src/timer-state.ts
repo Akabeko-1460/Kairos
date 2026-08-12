@@ -12,12 +12,18 @@ import type { PomodoroPreset } from "./preset";
  *       │                    │
  *       │        complete() / skip()
  *       │                    ▼
+ *       │        最終ラウンド？ ─ Yes → [Completed] → [Idle]
+ *       │                    │
+ *       │                   No
+ *       │                    ▼
  *       │           [Break:Running] ──pause()──► [Break:Paused]
  *       │                    │
  *       │        complete() / skip()
  *       │                    ▼
- *       │        ラウンド未達 → [Focus:Running]
- *       └── reset() ── 全ラウンド完了 → [Completed] → [Idle]
+ *       └── reset() ── [Focus:Running]（次ラウンド）
+ *
+ * 最終ラウンドの Focus が終わったときは休憩（shortBreak/longBreak）を挟まず、
+ * そのまま Completed にする（最後の長い休憩はユーザーにとって無意味なため）。
  */
 export type SessionPhase = "idle" | "focus" | "shortBreak" | "longBreak" | "completed";
 

@@ -1,104 +1,33 @@
 "use client";
 
-import { SoundIcon, type IconVariant } from "@/components/SoundIcon";
+import { SoundIcon } from "@/components/SoundIcon";
+import { VolumeSlider } from "@/components/VolumeSlider";
 import { useFreeplay } from "@/hooks/useFreeplay";
 import { useBackgroundArtStore } from "@/lib/backgroundArtStore";
-import type { VisualStyleId } from "@/lib/visualStyles";
-import type { EnginePhase } from "@kairos/audio-engine";
+import { SOUND_THEMES, type SoundTheme } from "@/lib/soundThemes";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 
-interface SoundEntry {
-  id: string;
-  phase: EnginePhase;
-  label: string;
-  icon: IconVariant;
-  accent: string;
-  /** カテゴリごとに全く異なる生成アートを描く（lib/visualStyles.ts）。 */
-  visual: VisualStyleId;
-  subtitles: readonly string[];
-}
-
-// docs/CLAUDE.md: 現状のサウンドパックは focus/break の2種類の音響エンジンしか持たないため、
-// 複数カテゴリが同じ phase を共有する（見た目・配色・副題は独立させ、体験としては別物にする）。
-// 将来 packs.json に専用パックが増えたら、それぞれ固有の phase / SoundPack を割り当てる。
-const SOUNDS: SoundEntry[] = [
-  {
-    id: "study",
-    phase: "focus",
-    label: "Study",
-    icon: "book",
-    accent: "#4c6ef5",
-    visual: "lattice",
-    subtitles: ["Steady Focus", "Quiet Concentration", "Reading Flow", "Exam Prep Mode"],
-  },
-  {
-    id: "work",
-    phase: "focus",
-    label: "Work",
-    icon: "focus",
-    accent: "#8562f5",
-    visual: "network",
-    subtitles: ["Deep Work Flow", "Task Momentum", "Inbox Zero Mode", "Project Sprint"],
-  },
-  {
-    id: "relax",
-    phase: "shortBreak",
-    label: "Relax",
-    icon: "break",
-    accent: "#3fae8e",
-    visual: "flow",
-    subtitles: ["Slow Exhale", "Soft Reset", "Gentle Unwind", "Afternoon Drift"],
-  },
-  {
-    id: "sleep",
-    phase: "shortBreak",
-    label: "Sleep",
-    icon: "crescent",
-    accent: "#5b5ee6",
-    visual: "starfield",
-    subtitles: ["Wind Down", "Night Settle", "Drifting Off", "Quiet Hours"],
-  },
-  {
-    id: "move",
-    phase: "focus",
-    label: "Move",
-    icon: "motion",
-    accent: "#f5a94c",
-    visual: "trails",
-    subtitles: ["Light Cardio", "Walking Pace", "Morning Stretch", "Energy Boost"],
-  },
-];
+// Home と Pomodoro の両方から参照する単一の定義元（lib/soundThemes.ts）。
+const SOUNDS = SOUND_THEMES;
 
 function pick<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
-function VolumeIcon() {
-  return (
-    <svg
-      width={16}
-      height={16}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.4}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 10v4h4l5 4V6l-5 4H4Z" />
-      <path d="M16.5 9a4 4 0 0 1 0 6" />
-    </svg>
-  );
-}
-
 export default function HomePage() {
-  const { freeplayCategoryId, freeplayPlaying, ensureEngine, playFreeplay, toggleFreeplayPause, setMasterVolume } =
-    useFreeplay();
+  const {
+    freeplayCategoryId,
+    freeplayPlaying,
+    ensureEngine,
+    playFreeplay,
+    toggleFreeplayPause,
+    masterVolume,
+    setMasterVolume,
+  } = useFreeplay();
   const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
 
   const [loadingId, setLoadingId] = useState<string | null>(null);
-  const [volume, setVolume] = useState(0.8);
   const [subtitle, setSubtitle] = useState("");
 
   const selected = useMemo(() => SOUNDS.find((s) => s.id === freeplayCategoryId) ?? null, [freeplayCategoryId]);
@@ -114,7 +43,7 @@ export default function HomePage() {
     });
   }, [selected, freeplayPlaying, setBackgroundArt]);
 
-  const handleSelect = async (entry: SoundEntry) => {
+  const handleSelect = async (entry: SoundTheme) => {
     if (freeplayCategoryId === entry.id) {
       // 同じ音をもう一度選んだら一時停止/再開のトグルにする
       toggleFreeplayPause();
@@ -125,15 +54,9 @@ export default function HomePage() {
       await ensureEngine();
       setSubtitle(pick(entry.subtitles));
       await playFreeplay(entry.id, entry.phase);
-      setMasterVolume(volume);
     } finally {
       setLoadingId(null);
     }
-  };
-
-  const handleVolumeChange = (v: number) => {
-    setVolume(v);
-    setMasterVolume(v);
   };
 
   const accent = selected?.accent ?? "#8b8b93";
@@ -183,7 +106,12 @@ export default function HomePage() {
                     transition={{ type: "spring", stiffness: 400, damping: 32 }}
                   />
                 )}
-                <span className="relative">
+                {/*
+                  この span がインライン(非flex)のままだと、中の SVG がテキストのベースラインに
+                  乗ってしまい、行の下に見えないディセンダー分の余白ができてアイコンが心持ち
+                  上にズレて見える。flex にしてベースライン計算を経由させないことで解消する。
+                */}
+                <span className="relative flex">
                   <SoundIcon variant={entry.icon} size={24} />
                 </span>
               </motion.button>
@@ -204,23 +132,7 @@ export default function HomePage() {
           {freeplayPlaying ? "❚❚" : "▶"}
         </button>
 
-        <div className="ml-2 flex flex-1 items-center gap-2">
-          <span className="text-muted">
-            <VolumeIcon />
-          </span>
-          <input
-            type="range"
-            name="masterVolume"
-            aria-label="音量"
-            min={0}
-            max={1}
-            step={0.01}
-            value={volume}
-            onChange={(e) => handleVolumeChange(Number(e.target.value))}
-            className="subtle-slider w-full"
-            style={{ color: accent }}
-          />
-        </div>
+        <VolumeSlider value={masterVolume} onChange={setMasterVolume} accentColor={accent} className="ml-2 flex-1" />
       </div>
     </div>
   );
