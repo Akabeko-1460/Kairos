@@ -59,8 +59,6 @@ const automation: PhaseAutomation = {
     [0, 8000],
     [1, 8000],
   ],
-  breathLfoHz: 0,
-  breathDepth: 0,
 };
 
 describe("PhaseGraph pad ensemble (ADR-006 harmonic drift)", () => {

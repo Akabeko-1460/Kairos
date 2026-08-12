@@ -13,10 +13,16 @@ const DETUNE_RANGE = 0.006; // ±0.3%
  * 同時に回し続け、位相がずれていくことで離散的な「切り替わり」なしに組み合わせが
  * 無限に変化する）を、複数の和声ボイシングテイクの音量LFOとして実装したもの。
  * 互いに素に近い値にして、組み合わせ周期が極端に長くなるようにする。
+ *
+ * **ADR-009で depth を 0.45→0.18 に縮小**: 旧 depth=0.45（baseline 0.55 との合成で
+ * 各テイクの音量が 0.10〜1.00 と実に10倍振れていた）は、reverbWet が高いテーマ（Relax/Sleep）で
+ * 「リバーブがずっと上下に呼吸するように膨らんでは萎む」という不快な唸り（トレモロ様の
+ * ポンピング）として知覚された（ユーザー報告）。周期も長め化し、うねりの周期そのものを
+ * さらに緩やかにした。
  */
-const PAD_DRIFT_PERIODS_SEC = [43, 59, 71, 83] as const;
-const PAD_DRIFT_BASELINE = 0.55;
-const PAD_DRIFT_DEPTH = 0.45;
+const PAD_DRIFT_PERIODS_SEC = [47, 61, 79, 97] as const;
+const PAD_DRIFT_BASELINE = 0.66;
+const PAD_DRIFT_DEPTH = 0.18;
 
 /**
  * 1フェーズ分のノードグラフ（docs/04_SOUND_ENGINE.md §2）。

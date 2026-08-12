@@ -375,6 +375,94 @@ Relax と Sleep を全面的に再設計した。
 
 ---
 
+## ADR-009: 全テーマを Endel の設計方針に沿って作り直す（Study/Work の差別化、Move の別物化、Relax の不快感修正）
+
+### 決定
+ユーザーから3点の指摘を受け、5テーマすべてを「今までの音は考慮せず」再設計した。
+
+1. **Study と Work の違いが分かりにくい**: 旧設計はどちらも「打楽器的な pulse を持つ、
+   ゆっくりイーズイン→サステイン→テーパーの弧」というほぼ同じ構造で、テンポと音色の
+   ニュアンスしか差が無かった。→ **Study は Study/Work/Move の中で唯一「拍」を持たない
+   テーマに変更**（Pulse は8拍に1音だけ鳴る極めて疎らな一音）。Work は逆に「規則的な拍が
+   集中の持続を助ける」という Endel の方針を明確に採用し、キック+ハイハットに加えて
+   短いコンピング動機（`generateGroovePulse`）を重ねて音楽性を足した
+2. **Move は筋トレ・運動用で他とは活動内容がまったく違うので、リズミカルな別物にすべき**:
+   旧設計は Study/Work と同じ弧をテンポ(120bpm)だけ変えて流用していた。→ **弧の構造から
+   作り替えた**。t=0 からほぼフルゲインで始まる「Drop-in」、キック+スネア(2・4拍目)+
+   ハイハットの実際のドラムパターン（`generateWorkoutGroove`）、Pad 自体も拍ごとに
+   ダッキングする「ポンピング」エンベロープ（`generatePad` の `pumpBpm`）、ほぼドライな
+   リバーブ(0.05–0.12)、128bpm（一般的なワークアウト楽曲のテンポ帯）に変更
+3. **Relax で「ずっと上下する反響しているような音」が不快**: 調査の結果、`phase-graph.ts` の
+   `addPadEnsemble`（ADR-006）が原因と特定した。Pad の複数テイクを和声ドリフト用LFOで
+   ブレンドする仕組みで、旧 `PAD_DRIFT_DEPTH=0.45`（baseline 0.55 との合成で各テイクの
+   音量が 0.10〜1.00 と10倍振れる）が、Relax の高い `reverbWet`（0.45–0.65）と組み合わさり、
+   「リバーブが呼吸するように膨らんでは萎む」トレモロ様のポンピングとして知覚されていた。
+   → **`PAD_DRIFT_DEPTH` を 0.45→0.18 に縮小**（全テーマに影響する根本原因の修正）。
+   加えて Relax・Sleep 個別の `reverbWet`/`pad`/`texture` の振れ幅も抑え、二重に対策した
+
+Endel の公開設計方針（endel.io/science, endel.io/focus, endel.io/activity, endel.io/relax）を
+テーマごとに参照し、「拍の有無・性格」を軸に役割を整理した（詳細は `04_SOUND_ENGINE.md` §4）。
+
+| テーマ | Endel的な位置づけ | Pulse の性格 |
+|---|---|---|
+| Study | Read — 規則的な拍を持たない没入 | 拍ではなく極めて疎らな一音（`generateArpeggioPulse` を8拍中1音に間引き） |
+| Work | Deep Work — 規則的な拍が集中の持続を助ける | キック+ハイハット+短いコンピング動機（新設 `generateGroovePulse`） |
+| Move | Activity — 運動のケイデンスに同調する別物のリズム | キック+スネア+ハイハットの実ドラムパターン（新設 `generateWorkoutGroove`） |
+| Relax | Relax — "simple sound structures... no beat... easy to process" | 柔らかい旋律のみ（ADR-008 を維持、振れ幅を縮小） |
+| Sleep | Sleep — 入眠→深い睡眠で静寂に近づく | Onset のみ柔らかい旋律（ADR-008 を維持、振れ幅を縮小） |
+
+### 調べたこと
+- **endel.io/science**: 「規則的な拍が長時間の集中を助けるというのは何世紀も前から知られており、
+  Endel の生産性向けサウンドスケープすべての基盤になっている」
+- **endel.io/focus**: Focus は「問題解決・創造的・精緻・身体的タスク」向けの総称カテゴリで、
+  "Deep Work" はその中でも「フロー状態に入りタスクを片付ける」ためのシナリオ
+- **endel.io/relax**: "Relax soundscapes don't include beats or complex sound textures —
+  they're designed to soothe with simple sounds that are easy for your brain to process"。
+  「拍を持たない」がプロダクトとして明言されている点が、今回の Study/Relax の再設計を裏付けた
+- **endel.io/activity**: Activity（旧 On-the-Go）は加速度センサー等でケイデンスを検出し、
+  歩行/ランニングのリズムに合わせて打楽器を加える。運動は「歩数に合わせて音が今すぐ動く」
+  文脈であり、他テーマのような穏やかなイーズインは合わないと判断した
+- **バグ調査（Relax の不快感）**: `packages/audio-engine/src/phase-graph.ts` を読み、
+  `breathLfoHz`/`breathDepth`（`PhaseAutomation` の一部）が実は `phase-graph.ts` の
+  どこからも参照されていない**死んだフィールド**だと判明した。実際に「呼吸」のように
+  音量を揺らしていたのは `addPadEnsemble` の LFO（ADR-006）であり、当初の想定（`breathLfoHz`
+  が何らかの呼吸効果を作っている）は誤りだった。この調査結果を受けて `breathLfoHz`/
+  `breathDepth` は `PhaseAutomation` 型・`packs.json`・`automation.ts` から削除した
+  （存在しない効果を示唆するフィールドを残すより、実際に効いている `PAD_DRIFT_DEPTH` を
+  直接修正する方が正確で保守しやすいと判断）
+
+### 影響
+- `packages/audio-engine/src/phase-graph.ts`: `PAD_DRIFT_DEPTH` 0.45→0.18、`PAD_DRIFT_BASELINE`
+  0.55→0.66、`PAD_DRIFT_PERIODS_SEC` を長め化
+- `packages/audio-engine/src/types.ts`: `PhaseAutomation` から `breathLfoHz`/`breathDepth` を削除
+- `packages/audio-engine/src/automation.ts`: 5テーマすべてのキーフレームを全面改訂
+- `apps/web/public/packs.json`: 同上。Move の `bpm` 120→128、Relax の `bpm` 70→64、
+  それぞれの pulse/pad `loopSeconds` を再計算（`isPulseLoopAligned` で検証済み）
+- `scripts/generate-placeholder-audio.mjs`: `generatePad` に `pumpBpm` オプションを追加、
+  `generateGroovePulse`（Work）・`generateWorkoutGroove`（Move）を新設。Study の Pulse 呼び出しを
+  `generatePulse` から `generateArpeggioPulse`（疎らな設定）に変更
+- 音源再生成対象: `audio/study/{pad_02,pulse_01,pulse_02}.wav`、`audio/work/{pulse_01,pulse_02}.wav`、
+  `audio/move/{pad_01,pad_02,pulse_01,pulse_02}.wav`、`audio/relax/{pulse_01,pulse_02}.wav`
+  （`docs/ASSET_LICENSES.md` の該当行を更新）
+- `apps/web/lib/soundThemes.ts`: Move の subtitles を「軽い運動」寄りの文言から
+  「筋トレ・運動」寄りの文言（Strength Training / Cardio Drive / Workout Pulse / Power Hour）に変更
+- `packages/audio-engine/src/phase-graph.offline.test.ts`,
+  `packages/audio-engine/src/automation.test.ts`: `breathLfoHz`/`breathDepth` 削除と
+  Study の pulse 期待値変更に追従
+
+### 却下した代替案
+- **`breathLfoHz`/`breathDepth` を実際に配線して活かす**: 死んだフィールドを活用する案も
+  検討したが、Relax の不快感の直接原因は Pad Ensemble のドリフトであり、そこに追加で
+  音量LFOを足すとさらに複雑になり再発リスクが増える。フィールド自体を削除し、
+  `PAD_DRIFT_DEPTH` を直接修正する方が単純で安全と判断した
+- **Move のテンポを 120bpm のまま据え置く**: 一般的なワークアウト楽曲のテンポ帯（house/pop
+  系で124–128bpm）を踏まえ、128bpmへ変更した。pulse/pad の `loopSeconds` はすべて128bpmの
+  拍に整数個収まる値へ再計算した
+- **Study にも何らかの拍を残す**: endel.io/relax が「拍を持たない」を明言している以上、
+  Study（読解という言語処理タスク）にも同じ理屈が当てはまると判断し、拍を完全に排除した
+
+---
+
 ## 併用する Web API
 
 | API | 用途 | Phase |

@@ -32,8 +32,6 @@ export interface PhaseAutomation {
   readonly cellDensity: Keyframes; // 毎秒の期待発火数
   readonly reverbWet: Keyframes;
   readonly lowPassHz: Keyframes;
-  readonly breathLfoHz: number;
-  readonly breathDepth: number;
 }
 
 export interface LayerSpec {

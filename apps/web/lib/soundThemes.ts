@@ -60,7 +60,7 @@ export const SOUND_THEMES: SoundTheme[] = [
     icon: "motion",
     accent: "#f5a94c",
     visual: "trails",
-    subtitles: ["Light Cardio", "Walking Pace", "Morning Stretch", "Energy Boost"],
+    subtitles: ["Strength Training", "Cardio Drive", "Workout Pulse", "Power Hour"],
   },
 ];
 

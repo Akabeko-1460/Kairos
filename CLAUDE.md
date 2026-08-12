@@ -172,6 +172,20 @@
       Sleep のときだけ実経過時間で t を進めるようにし（100分を仮想セッション長とし、
       40分がt=0.4に一致）、一晩中つけっぱなしにする使い方でも実時間で機能する
       （`apps/web/lib/soundscapeRuntime.ts`）。
+      **rev.4**: ユーザーから「Study/Workの違いが分からない」「Moveは筋トレ・運動用でもっと
+      別物のリズミカルな音にすべき」「Relaxのずっと上下する反響音が不快」という3つの指摘を受け、
+      「今までの音は考慮せず」5テーマ全てを Endel の公開設計方針（endel.io/science,
+      endel.io/focus, endel.io/activity, endel.io/relax）に基づいて再設計した
+      （`docs/03_ARCHITECTURE.md` ADR-009）。Study は Study/Work/Move の中で唯一「拍」を
+      持たないテーマに変更（Pulse は8拍に1音だけの疎らな一音）。Work は逆に規則的な拍を
+      明確に採用し、キック+ハイハットに短いコンピング動機（`generateGroovePulse`、新設）を
+      重ねた。Move は弧の構造自体を作り替え、ほぼ即座にフルゲインで始まり、キック+スネア+
+      ハイハットの実際のドラムパターン（`generateWorkoutGroove`、新設）と拍同期でポンピングする
+      Pad（`generatePad` の `pumpBpm`、新設）を持つ、他とは明確に別物のリズミカルな音にした
+      （128bpmに変更）。Relaxの不快感はコード調査の結果、`phase-graph.ts` の Pad Ensemble
+      LFO（ADR-006）の深さが過大だったことが根本原因と判明し、`PAD_DRIFT_DEPTH` を
+      0.45→0.18に縮小（全テーマに影響する修正）。あわせて `PhaseAutomation` の
+      `breathLfoHz`/`breathDepth` は実装されていない死んだフィールドだったため削除した。
       未着手: フェーズ切替時の背景色4秒補間（`docs/02_SPEC.md` §6.3）、
       Pad の実音源化（A/D/E キーに合う安定したドローン録音の追加探索）
 - [ ] Phase 2: 生成エンジン本体（LoopManager のテイクローテーション、AI生成の本番素材への差し替え、実聴での音作り）

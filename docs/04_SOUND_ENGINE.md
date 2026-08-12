@@ -18,7 +18,7 @@ Endel は「サウンドチームが事前にデザインした音素材を、�
   素材ライブラリ（AI生成のループ／ワンショット）
         ├─ Pad     … 和声の土台。長いループ。常に鳴る
         ├─ Texture … 環境音・ノイズ。マスキングと空気感
-        ├─ Pulse   … 一定の拍。集中フェーズのみ
+        ├─ Pulse   … テーマごとに性格が異なる（拍/コンピング/実ドラム/柔らかい旋律/疎らな一音、§4.6）
         ├─ Cell    … 単音・短い断片。確率的に配置される
         └─ Cue     … フェーズ境界の合図。ワンショット
         ▼
@@ -117,7 +117,7 @@ Break フェーズ（`shortBreak` → relax、`longBreak` → sleep）で使う
             { "role": "pulse",   "loopSeconds": 7.05882353, "takes": ["/audio/study/pulse_01.wav", "/audio/study/pulse_02.wav"] },
             { "role": "cell",    "oneShots": ["/audio/study/cell_a3.wav", "/audio/study/cell_c4.wav", "/audio/study/cell_e4.wav", "/audio/study/cell_g4.wav"] }
           ],
-          "automation": { "pad": [ /* keyframes */ ], "texture": [], "pulse": [], "cellDensity": [], "reverbWet": [], "lowPassHz": [], "breathLfoHz": 0, "breathDepth": 0 }
+          "automation": { "pad": [ /* keyframes */ ], "texture": [], "pulse": [], "cellDensity": [], "reverbWet": [], "lowPassHz": [] }
         }
         // work / move / relax / sleep も同じ形。§4 の表 + automation.ts が正。
       },
@@ -144,76 +144,136 @@ Endel の Scenario と同じ「開始 / 中間 / 終了」の弧を、
 rev.3（`03_ARCHITECTURE.md` ADR-004）から、この弧は5つのテーマ（study/work/move/relax/sleep）
 それぞれが個別に持ちます。実装は `packages/audio-engine/src/automation.ts`
 （`studyAutomation` などのエクスポート）が正で、下表はその設計根拠の要約です。
-根拠文献は `docs/deep-research-report_chatGPT.md`（ChatGPT報告）と
+
+**rev.4（`03_ARCHITECTURE.md` ADR-009）で全テーマを再設計した。** 旧設計（rev.3系）は
+Study と Work がほぼ同じ構造（どちらも打楽器的な pulse を持つだけ）で使い分けが分かりにくく、
+Move も Study/Work と同じ弧をテンポだけ変えて流用していた。Relax は reverbWet の大きな
+振れ幅と Pad Ensemble のドリフトが組み合わさり「リバーブが上下に呼吸するように膨らんでは
+萎む」不快感を生んでいた（いずれもユーザーからの実聴フィードバック）。rev.4 では
+Endel の公開設計方針（endel.io/science, endel.io/focus, endel.io/activity, endel.io/relax）を
+参照し、**テーマごとに「拍の有無・性格」から作り直した**（詳細は ADR-009）。
+根拠文献は上記に加え `docs/deep-research-report_chatGPT.md`（ChatGPT報告）と
 `集中力を高める音の文献調査_gemini.md`（Gemini報告）。
 
-### 4.1 Focus 系テーマ（Study / Work / Move）— 区間構造は共通
+### 4.1 Study — 読書・参考書での学習（拍を持たない没入型）
+
+Endel の "Read" は規則的な拍を持たない没入型サウンドスケープであり、読解は言語処理そのもの
+であるため外部リズムと競合しうる（`03_ARCHITECTURE.md` ADR-007 で既出）。そのため
+Study は **Study/Work/Move の中で唯一「拍」を持たない**テーマにした。
 
 | t | 区間名 | 意図 |
 |---|---|---|
-| 0.00 – 0.06 | **Ease-in** | 静かに立ち上がる。パルスは遅れて入る（Move だけ短め・速め） |
+| 0.00 – 0.06 | **Ease-in** | 静かに立ち上がる |
 | 0.06 – 0.85 | **Sustain** | ほぼ変化しない。ここで音が動くと注意が奪われる |
 | 0.85 – 0.95 | **Taper** | Cell の密度を落とし、終わりが近いことを無意識に伝える |
-| 0.95 – 1.00 | **Wind-down** | パルスが消え、パッドだけが残る。t=0.98 で cue 音 |
-
-| 項目 | **Study** | **Work** | **Move** |
-|---|---|---|---|
-| 想定用途 | 本を読む・参考書と向き合う学習（言語処理中心） | PC作業・仕事、および作曲/ライティングなどの創造的作業 | 軽い運動・移動中 |
-| Key / Scale | A Aeolian | A Dorian | E Major Pentatonic |
-| BPM | 68（安静時心拍に近い一定リズム） | 76（Studyよりやや速く覚醒度を上げる） | 120（運動的・明るいテンポ、安静時心拍よりやや速い） |
-| Pad の音色 | サイン波中心、装飾なし（シンプルさ優先） | 木質楽器/弦楽器のボディ共鳴を模した帯域（700Hz付近）を付与（ADR-007、Endel "Deep Work"） | 明るい register（e4）、major pentatonic の開放感 |
-| Texture | ピンクノイズをさらに軽くローパス（4600Hz）して暖かく（ADR-007） | ピンクノイズ＋"room"（木質の部屋を思わせる250–2200Hz帯域ノイズ。旧"hum"から置き換え） | 高域寄りの軽いエア質感（マスキングより開放感） |
-| Pulse (Sustain) | 0.36（控えめ、一定） | 0.44（やや前に出るが、ハイハットは控えめ） | 0.58（強く推進力を出す） |
-| Cell 発火頻度 | 約11秒に1回 | 約9秒に1回（ADR-007で0.13→0.11に減らした） | 約6秒に1回（生気） |
-| Reverb (Sustain) | 0.20（小部屋、明瞭） | 0.20（没入感、ADR-007で0.16から増やした） | 0.10（さらにドライ、パンチを殺さない） |
-| Low-pass (Sustain) | 5400Hz（ADR-007で6000Hzから下げ、低覚醒・暖かい印象に） | 7200Hz | 9500Hz（明るく開放的） |
-| 根拠 | ChatGPT報告「作業タイプ依存性」表: 集中学習は一定テンポ・歌詞なし・ピンクノイズ・音量中。timbre研究: 低いスペクトル傾斜＝肯定的な感情価 | Endel "Deep Work": 弦楽器/鍵盤/木質音・ゆったりしたテンポ・没入感のあるハーモニー。ライティングは言語処理を伴うため装飾音は控えめに（ADR-007） | 両報告: 明るいテンポの音楽が気分と覚醒度を高める（100–140BPM） |
-
-**設計根拠（共通）**（`01_ENDEL_RESEARCH.md` §4 と ChatGPT/Gemini報告の合意点）
-- 「一定のビートが長時間の集中を助ける」→ `pulse` を Sustain 区間で完全に一定に保つ
-- 「刺激的だが決して気を散らさない」→ Sustain 中の変化は無し。メロディックな展開を作らない
-- Cell はスケール内の音だけを選ぶ（`CellScheduler`）ので、密度をどれだけ上げても不協和にならない
-- 歌詞・言語情報のある音は一切使わない（無関連発話効果 / ISE、Gemini報告 §3.1）
-- （`03_ARCHITECTURE.md` ADR-005）Endel Science（"stimulate concentration without pulling you
-  away from the task"）と Haruvi et al. 2022（PMC8829886）を踏まえ、Cell の定位幅・音量を
-  さらに絞り、実音源の硬さを和らげてある。集中力そのものより「聞きよさ」を最終仕上げの軸にした
-
-### 4.2 Break 系テーマ（Relax / Sleep）
-
-rev.3.6（`03_ARCHITECTURE.md` ADR-008）から、Relax と Sleep は区間構造そのものが異なる。
-Relax は従来通り Release/Rest/Re-engage の3区間、Sleep は「入眠 → 深い睡眠」という
-時間経過そのものを表現する専用の区間構造を持つ。
-
-#### 4.2.1 Relax（shortBreak）— Release / Rest / Re-engage
-
-| t | 区間名 | 意図 |
-|---|---|---|
-| 0.00 – 0.12 | **Release** | 緊張を解く。リバーブが一気に広がる |
-| 0.12 – 0.80 | **Rest** | 自然音・柔らかい旋律パルスが主役。密度は最小。ゆるやかな呼吸 |
-| 0.80 – 1.00 | **Re-engage** | わずかに明るさを戻す。t=0.98 で cue 音 |
+| 0.95 – 1.00 | **Wind-down** | 静かな一音の余韻だけが残る。t=0.98 で cue 音 |
 
 | 項目 | 値 |
 |---|---|
-| Key / Scale / BPM | D Lydian, 70bpm |
+| Key / Scale / BPM | A Aeolian, 68bpm（拍としては聞こえない。一音の間隔の基準にのみ使う） |
+| Pad（主役） | 3テイクの和音を少しずつ変えて（Ensemble ドリフトで奥行きを出す）。装飾は最小限 |
+| Texture（主役） | ピンクノイズをさらに軽くローパス（4600Hz）して暖かく（ADR-007） |
+| Pulse (Sustain) | 0.16 — `generateArpeggioPulse` を極端に間引いた設定（8拍中1音のみ）。「拍」ではなく、まれに響く一音の余韻 |
+| Cell 発火頻度 | 約14秒に1回 |
+| Reverb (Sustain) | 0.16（小部屋、明瞭） |
+| Low-pass (Sustain) | 4800Hz（暖かい・低覚醒） |
+
+**設計根拠**: 「刺激的だが決して気を散らさない」以前に、そもそも刺激（拍）を持ち込まない。
+主役は Pad の静かな一定和音とピンクノイズによるマスキングで、Sustain 区間 (0.06–0.85) は
+ほぼ変化しない。歌詞・言語情報のある音は一切使わない（無関連発話効果 / ISE、Gemini報告
+§3.1）。Cell はスケール内の音だけを選ぶ（`CellScheduler`）ので、不協和にはならない。
+
+### 4.2 Work — PC作業・仕事、および作曲・ライティングなどの創造的作業（規則的な拍）
+
+endel.io/science: 「規則的な拍が長時間の集中を助ける」という Endel の公開方針をそのまま
+採用し、Study とは対照的に**明確な拍を持たせる**。Endel "Deep Work"
+（"smooth ... string, keyboard and wood notes, immersive background harmony"）を参考に、
+Pad には木質楽器/弦楽器のボディ共鳴を付与（ADR-007）。Pulse はキック+オフビートハイハットの
+グルーヴに加え、`generateGroovePulse` による短いコンピング動機（1〜3音のフレーズ）を重ね、
+「拍はあるが音楽的な一節も乗る」という Study・Move との中間的な性格にした。
+
+| t | 区間名 | 意図 |
+|---|---|---|
+| 0.00 – 0.06 | **Ease-in** | 静かに立ち上がる。パルスは遅れて入る |
+| 0.06 – 0.85 | **Sustain** | ほぼ変化しない |
+| 0.85 – 0.95 | **Taper** | Cell の密度を落とす |
+| 0.95 – 1.00 | **Wind-down** | パルスが消え、パッドだけが残る。t=0.98 で cue 音 |
+
+| 項目 | 値 |
+|---|---|
+| Key / Scale / BPM | A Dorian, 76bpm |
+| Pad | 木質楽器/弦楽器のボディ共鳴を模した帯域（700Hz付近、ADR-007） |
+| Texture | ピンクノイズ＋"room"（木質の部屋を思わせる250–2200Hz帯域ノイズ） |
+| Pulse (Sustain) | 0.42 — キック+オフビートハイハット+短いコンピング動機（`generateGroovePulse`） |
+| Cell 発火頻度 | 約10秒に1回 |
+| Reverb (Sustain) | 0.22（没入感） |
+| Low-pass (Sustain) | 7000Hz |
+
+**設計根拠**: 作曲・ライティングは言語/音楽処理そのものを行うタスクであり、装飾音の主張が
+強いと自分の思考と競合しうるため（ADR-007）、コンピング動機は短く控えめ（noteSec 0.7秒・
+gain 0.2）に留めた。
+
+### 4.3 Move — 筋トレ・運動（構造自体が別物。実際のドラムパターン）
+
+Study/Work とは活動内容がまったく異なるため、**弧の構造そのものを作り替えた**
+（旧設計は同じ弧をテンポだけ変えて流用しており、「同じにしか聞こえない」という指摘を受けた）。
+Endel "Activity" はケイデンス（運動のリズム）に同調する打楽器を主役にする。運動は
+「今すぐ動き出す」文脈のため、他テーマのような穏やかなイーズインをやめた。
+
+| t | 区間名 | 意図 |
+|---|---|---|
+| 0.00 – 0.02 | **Drop-in** | ほぼ即座にフルゲイン。拍はすでに t=0 から鳴っている |
+| 0.02 – 0.85 | **Sustain** | 明確なドラムパターンが続く |
+| 0.85 – 0.97 | **Taper** | Cell 密度・パルスをやや落とす |
+| 0.97 – 1.00 | **Cool-down** | パルスが下がる。t=0.98 で cue 音 |
+
+| 項目 | 値 |
+|---|---|
+| Key / Scale / BPM | E Major Pentatonic, 128bpm（一般的なワークアウト楽曲のテンポ帯） |
+| Pad | `generatePad` の `pumpBpm` オプションで拍ごとダッキングする「サイドチェイン風」のポンピング。和音の土台自体をリズムに同調させる |
+| Texture | 高域寄りの軽いエア質感（マスキングより開放感、抑えめ） |
+| Pulse (Sustain) | 0.72 — `generateWorkoutGroove` によるキック+スネア(2・4拍目)+ハイハット(8分)の実際のドラムパターン |
+| Cell 発火頻度 | 約4.5秒に1回（エネルギー感） |
+| Reverb (Sustain) | 0.05（ほぼドライ） |
+| Low-pass (Sustain) | 9800Hz（明るく開放的） |
+
+**設計根拠**: Study/Work/Relax/Sleep の「空間に包まれる」方向性から明確に切り離し、
+Pad も含めて音の土台そのものが拍に同調する点が他テーマとの決定的な違い。
+
+### 4.4 Relax — 短い休憩（"simple... no beat... easy to process"）
+
+endel.io/relax: "don't include beats or complex sound textures — simple sound structures
+that are easy for your brain to process"。ADR-008 で追加した柔らかい旋律アルペジオ
+（`generateArpeggioPulse`、拍ではなく歌のようなフレーズ）は「ある程度の音楽性」のために
+維持しつつ、**振れ幅を大きく抑えて全体をほぼ静止させた**（ADR-009）。
+
+| t | 区間名 | 意図 |
+|---|---|---|
+| 0.00 – 0.15 | **Release** | 緊張を解く。ただし旧版のような大きなリバーブの跳ね上がりはしない |
+| 0.15 – 0.85 | **Rest** | 自然音・柔らかい旋律が主役。ほぼ一定 |
+| 0.85 – 1.00 | **Re-engage** | わずかに明るさを戻す。t=0.98 で cue 音 |
+
+| 項目 | 値 |
+|---|---|
+| Key / Scale / BPM | D Lydian, 64bpm |
 | Texture | 雨・葉音／波（自然音、ソフトファシネーション） |
-| Pulse (Rest) | 0.32 — `generateArpeggioPulse` による柔らかい旋律フレーズ（7拍で山なりに登り降り）。rev.3.6 で新設 |
-| Reverb (Rest) | 0.65（大きなホール） |
-| Low-pass (Rest) | 1800Hz |
-| 呼吸 LFO | 0.08Hz / depth 0.12（約12.5秒周期） |
+| Pulse (Rest) | 0.22 — `generateArpeggioPulse`（7拍で山なりに登り降り）。旧版よりテンポを落とし、減衰も長く緩やかに、音量も下げた |
+| Reverb (Rest) | 0.40（旧 0.65 から縮小） |
+| Low-pass (Rest) | 2000Hz |
 
-**設計根拠**: 自然音はストレスを軽減しソフトファシネーションを提供する（両報告）→ texture を
-主役にし、pad は背景に回す。Study/Work/Move のような打楽器的な拍は入れない（休憩に
-「作業的な拍」があると身体が作業モードを維持してしまうため）が、
-deep-research-report_relux_chatGPT.md の「反復性や予測可能性が高いリズムが安定感を高める」
-「60–80BPM・柔らかく単純な旋律」という知見を踏まえ、フェルトピアノ的な音色の柔らかい
-旋律パルスを新たに追加した（「音楽性をある程度」という要望に応える）。
+**設計根拠（ADR-009 で追加）**: 旧設計は pad 0.47→0.77、reverbWet 0.45→0.65 と大きく
+動いており、Pad Ensemble のドリフト（`phase-graph.ts` の `PAD_DRIFT_DEPTH`、当時0.45）と
+組み合わさって「リバーブが上下に呼吸するように膨らむ」不快感の原因になっていた
+（ユーザー報告）。根本原因である `PAD_DRIFT_DEPTH` を 0.45→0.18 に縮小した上で、
+Relax 側の pad/texture/reverbWet の振れ幅もいずれも半分以下に抑え、二重に対策した。
 
-#### 4.2.2 Sleep（longBreak / Home フリー再生）— 入眠 → 深い睡眠
+### 4.5 Sleep — 深い休憩・入眠（入眠 → 深い睡眠、ADR-008 の構造を維持）
 
 Sleep だけは Release/Rest/Re-engage 型ではなく、時間経過に伴って**継続的な刺激から
-なめらかに遠ざかっていく**専用の区間構造を持つ。Home のフリー再生では実時間で t が進む
-（`apps/web/lib/soundscapeRuntime.ts` の `SLEEP_VIRTUAL_DURATION_SEC` = 100分。
-40分がちょうど t=0.4 に一致する）。
+なめらかに遠ざかっていく**専用の区間構造を持つ（ADR-008）。Home のフリー再生では実時間で
+t が進む（`apps/web/lib/soundscapeRuntime.ts` の `SLEEP_VIRTUAL_DURATION_SEC` = 100分。
+40分がちょうど t=0.4 に一致する）。ADR-009 では Relax と同じ理由（Pad Ensemble ドリフトとの
+相互作用）で pad/reverbWet のピーク値をやや下げ、より確実に「膨らみ過ぎない」ようにした。
 
 | t（実時間の目安、フリー再生時） | 区間名 | 意図 |
 |---|---|---|
@@ -229,13 +289,12 @@ Sleep だけは Release/Rest/Re-engage 型ではなく、時間経過に伴っ�
 | 項目 | Onset (t≈0.2) | Deep (t≈0.7) |
 |---|---|---|
 | Key / Scale / BPM | D Aeolian・低い register, 60bpm | 同左 |
-| Texture | ブラウンノイズ 0.28–0.30 | ブラウンノイズ 0.08 まで減衰 |
-| Pad | 0.70–0.75 | 0.15–0.18 まで減衰 |
-| Pulse | 0.30（`generateArpeggioPulse`、8拍中3拍だけ鳴る疎らな短三和音） | 0.0（完全に消える） |
-| Cell 発火頻度 | 約30秒に1回 | 約3〜4分に1回 |
-| Reverb | 0.68–0.72 | 0.80–0.85（さらに大きく遠く） |
-| Low-pass | 1050–1100Hz | 600–750Hz（さらに暗く） |
-| 呼吸 LFO | 0.035Hz / depth 0.14（約29秒周期） | 同左（一定） |
+| Texture | ブラウンノイズ 0.24–0.26 | ブラウンノイズ 0.07–0.08 まで減衰 |
+| Pad | 0.58–0.62 | 0.15–0.18 まで減衰（旧 0.70–0.75 から縮小、ADR-009） |
+| Pulse | 0.24（`generateArpeggioPulse`、8拍中3拍だけ鳴る疎らな短三和音） | 0.0（完全に消える） |
+| Cell 発火頻度 | 約33秒に1回 | 約4分に1回 |
+| Reverb | 0.56–0.66 | 0.66–0.70（さらに大きく遠く。旧 0.80–0.85 から縮小、ADR-009） |
+| Low-pass | 1100–1150Hz | 650–800Hz（さらに暗く） |
 
 **設計根拠**（`03_ARCHITECTURE.md` ADR-008）: deep-research-report_relux_chatGPT.md の
 最重要の知見 — 基礎研究（Basner 2026）でピンクノイズ50dBの継続再生により**REM睡眠が
@@ -244,18 +303,16 @@ Sleep だけは Release/Rest/Re-engage 型ではなく、時間経過に伴っ�
 静寂や耳栓で深睡眠に移行する」。したがって「40分後に深い睡眠用の**別の音**」を鳴らすのではなく、
 **刺激を段階的に減らし静寂に近づけていく**ことこそが「睡眠をより深くする音」であると解釈した。
 
-### 4.3 対照表（実装時のチェックリスト）
+### 4.6 対照表（実装時のチェックリスト）
 
 | 要素 | Study | Work | Move | Relax | Sleep |
 |---|---|---|---|---|---|
-| 拍（打楽器） | あり・一定 68bpm | あり・一定 76bpm（ハイハット控えめ） | あり・一定 120bpm | なし | なし |
-| 旋律パルス | なし | なし | なし | あり・70bpm（柔らかいアルペジオ、ADR-008） | あり・60bpm（Onsetのみ、Deepで消える、ADR-008） |
-| Noise color | ピンク（さらに暖色化） | ピンク＋"room"（木質の部屋） | 軽いエア（ハイパス強め） | 自然音（雨/波） | ブラウン（Deepでさらに減衰） |
-| Pad の装飾 | なし（サイン波中心） | 木質/弦楽器ボディ共鳴（ADR-007） | なし | なし | なし |
-| Reverb | 小部屋 0.20–0.38 | 小部屋〜やや没入 0.20–0.34 | ドライ 0.10–0.14 | ホール 0.45–0.65 | 0.50（Onset）→0.85（Deep、さらに遠く） |
-| Low-pass | 5400Hz | 7200Hz | 9500Hz | 1800–3000Hz | 1500Hz（Onset）→600Hz（Deep、さらに暗く） |
-| Cell 発火頻度 | 約11秒に1回 | 約9秒に1回 | 約6秒に1回 | 約24–40秒に1回 | 約30秒（Onset）→約3〜4分（Deep）に1回 |
-| 呼吸 | 無し | 無し | 無し | 0.08Hz | 0.035Hz（一晩を通じて一定） |
+| 拍の性格 | なし（極めて疎らな一音のみ） | あり・一定 76bpm（キック+ハット+コンピング動機） | あり・一定 128bpm（実際のドラムパターン） | なし（柔らかい旋律のみ） | なし（Onsetのみ柔らかい旋律） |
+| Pad の性格 | 静かな一定和音 | 木質/弦楽器ボディ共鳴（ADR-007） | 拍同期ポンピング（ADR-009） | 静かにほぼ一定 | Onset→Deepで継続的に減衰 |
+| Noise color | ピンク（さらに暖色化） | ピンク＋"room"（木質の部屋） | 軽いエア（控えめ） | 自然音（雨/波） | ブラウン（Deepでさらに減衰） |
+| Reverb | 小部屋 0.16–0.32 | 小部屋〜やや没入 0.22–0.36 | ほぼドライ 0.05–0.12 | ホール 0.32–0.40（ADR-009で縮小） | 0.42（Onset）→0.70（Deep、ADR-009で縮小） |
+| Low-pass | 4800Hz | 7000Hz | 9800Hz | 2000–2800Hz | 1150Hz（Onset）→650Hz（Deep） |
+| Cell 発火頻度 | 約14秒に1回 | 約10秒に1回 | 約4.5秒に1回 | 約29–50秒に1回 | 約33秒（Onset）→約4分（Deep）に1回 |
 | Pomodoro での役割 | Focus（選択可） | Focus（選択可・既定） | Focus（選択可） | shortBreak（固定） | longBreak（固定）／Home フリー再生（実時間でフェーズ進行、ADR-008） |
 
 ---
@@ -281,8 +338,6 @@ export interface PhaseAutomation {
   readonly cellDensity: Keyframes;
   readonly reverbWet: Keyframes;
   readonly lowPassHz: Keyframes;
-  readonly breathLfoHz: number;
-  readonly breathDepth: number;
 }
 
 /** 純粋関数。ユニットテストの主対象。 */
@@ -485,31 +540,42 @@ export class CellScheduler {
 音程変更は `playbackRate = 2 ** (semitone / 12)` で行います（再生速度も変わりますが、
 短い減衰音なので気になりません。気になるなら素材を音程ごとに用意してください）。
 
-### 6.5.1 Pulse — キックドラムのグルーヴ（`03_ARCHITECTURE.md` ADR-006）
+### 6.5.1 Pulse — テーマごとに性格の異なる4種類の生成器（`03_ARCHITECTURE.md` ADR-006/ADR-009）
 
-Pulse 層は元は固定周波数のクリック音だったが、「ドラムのキック音で人の活動に合わせた
-リズムを作る」ための改良として、`scripts/generate-placeholder-audio.mjs` の `generatePulse`
-を以下のように拡張した:
+Pulse 層は元は全テーマ共通の固定周波数クリック音だったが、rev.4（ADR-009）で
+**テーマごとに完全に異なる生成器**を使うようにした（`scripts/generate-placeholder-audio.mjs`）。
 
-- **ピッチドロップ式キック合成**: 固定周波数のサイン波ではなく、`toneStartHz → toneEndHz`
-  へ位相を毎サンプル積分しながら指数的に下降させる。実際のキックドラム（膜鳴楽器）に近い
-  「ドスン」という質感になる
-- **オフビートのハイハット**（Work / Move のみ）: 拍の裏に軽い高域ノイズバーストを添えて
-  グルーヴ感を出す。Study には追加しない — 文献（Georgetown大学の"work flow"音楽研究）が
-  複雑思考タスクには low rhythmic complexity を支持しているため
+- **`generatePulse`（キック単体、基礎DSP）**: 固定周波数のサイン波ではなく
+  `toneStartHz → toneEndHz` へ位相を毎サンプル積分しながら指数的に下降させる、実際の
+  キックドラム（膜鳴楽器）に近い「ドスン」という質感の合成器。他の生成器から内部的に呼ばれる
+- **`generateGroovePulse`（Work 専用）**: `generatePulse` のキック+オフビートハイハットに、
+  `generateArpeggioPulse` と同系統の短いコンピング動機（1〜3音のフレーズ）を重ねる。
+  endel.io/science の「規則的な拍が集中を助ける」を採用しつつ、Endel "Deep Work" の
+  楽器的な質感も併せ持たせた
+- **`generateWorkoutGroove`（Move 専用）**: キック+スネア(クラップ、2・4拍目)+ハイハット(8分)の
+  実際のドラムパターンを合成する。Study/Work の「装飾的なキック」より明確に「曲のビート」として
+  聞こえることを狙い、運動のケイデンスに同調する用途に合わせた
+- **`generateArpeggioPulse`（Study/Relax/Sleep）**: 打楽器ではなく、スケール内の音程を辿る
+  柔らかい旋律フレーズ（フェルトピアノ/マレット的な音色）。Study は8拍中1音だけの極端に
+  疎らな設定（「拍」に聞こえない密度）、Relax/Sleep は ADR-008 の設計のまま（後述）
 
-いずれもテンポは一定（isochronous）のまま。シンコペーションやフィルは入れない
+いずれもテンポは一定（isochronous）のまま。シンコペーションやフィルは Move 以外には入れない
 （Sun 2025: 急激なリズム/ダイナミクス変化を持つ楽曲は作業フローを阻害する）。
 
-#### Relax / Sleep の旋律パルス（`generateArpeggioPulse`、ADR-008）
+#### Study の疎らな一音（ADR-009）
 
-Relax と Sleep の Pulse は打楽器的なキックではなく、`generateArpeggioPulse`
-（`scripts/generate-placeholder-audio.mjs`）による**柔らかい旋律フレーズ**にしている。
-`generateOneShot` と同じ倍音構成（フェルトピアノ/マレット的な音色）で、拍ごとに
-スケール内の音程を辿る短いフレーズをループさせる。deep-research-report_relux_chatGPT.md
+Endel "Read" は規則的な拍を持たない。Study の Pulse は `generateArpeggioPulse` を
+8拍に1音だけ鳴る設定（他は休符）で使い、「拍」ではなく、ページをめくるようなごくまれな
+残響として存在させている。
+
+#### Relax / Sleep の旋律パルス（`generateArpeggioPulse`、ADR-008/ADR-009）
+
+Relax と Sleep の Pulse は打楽器的なキックではなく、**柔らかい旋律フレーズ**にしている。
+拍ごとにスケール内の音程を辿る短いフレーズをループさせる。deep-research-report_relux_chatGPT.md
 の「反復性や予測可能性が高いリズムが安定感を高める」「60–80BPM・柔らかく単純な旋律」を
 根拠にしている。Sleep は8拍中3拍しか鳴らさない疎らなパターンにして、Onset フェーズを
-過ぎると automation 側で音量を0まで落とす（§4.2.2）。
+過ぎると automation 側で音量を0まで落とす（§4.5）。ADR-009 で Relax のテンポを70→64bpmに
+落とし、減衰も長く緩やかにして、より主張の弱い存在にした（§4.4 参照）。
 
 ### 6.6 メモリ管理
 
