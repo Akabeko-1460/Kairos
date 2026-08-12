@@ -1,3 +1,31 @@
+// docs/ASSET_LICENSES.md より: CC BY / CC BY-SA の音源はクレジット表示が必須（CC0 / Public Domain は不要なので含めない）。
+const SOUND_CREDITS = [
+  {
+    title: "Japanese rin played as struck idiophone",
+    author: "MichaelMaggs",
+    license: "CC BY-SA 4.0",
+    url: "https://commons.wikimedia.org/wiki/File:Japanese_rin_played_as_struck_idiophone.ogg",
+  },
+  {
+    title: "Spielwiese Glocken",
+    author: "Metzner",
+    license: "CC BY-SA 2.0 DE",
+    url: "https://commons.wikimedia.org/wiki/File:Spielwiese_Glocken.ogg",
+  },
+  {
+    title: "Kalimba",
+    author: "Worldmaster0",
+    license: "CC BY-SA 3.0",
+    url: "https://commons.wikimedia.org/wiki/File:Kalimba.ogg",
+  },
+  {
+    title: "Bristol Chimes",
+    author: "Freesound.org 経由でアップロード",
+    license: "CC BY 3.0",
+    url: "https://commons.wikimedia.org/wiki/File:Bristol_Chimes.ogg",
+  },
+];
+
 const REFERENCES = [
   {
     title: "Endel — Technology",
@@ -88,11 +116,39 @@ export default function CreditPage() {
           </ul>
         </section>
 
+        <section className="flex flex-col gap-4">
+          <h2 className="text-sm font-medium tracking-wide text-foreground">音源クレジット</h2>
+          <p className="text-xs leading-6 text-muted/80">
+            一部の効果音・環境音（雨・波の音、鐘・鈴・カリンバの単音）は Wikimedia Commons で
+            公開されている実録音を、トリミングと音量調整のみ行って使用しています。
+            Public Domain / CC0 の素材は表示不要のため省略し、CC BY・CC BY-SA の素材のみ記載します。
+            合成音（ノイズ・パッド・拍）を含む全素材の出所は
+            <code className="rounded bg-surface px-1 py-0.5 text-[11px]"> docs/ASSET_LICENSES.md</code> で管理しています。
+          </p>
+          <ul className="flex flex-col gap-4">
+            {SOUND_CREDITS.map((credit) => (
+              <li key={credit.url} className="border-l border-border pl-4">
+                <a
+                  href={credit.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground"
+                >
+                  {credit.title}
+                </a>
+                <p className="mt-1 text-xs leading-6 text-muted">
+                  {credit.author} · {credit.license}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
         <section className="flex flex-col gap-4 pb-8">
           <h2 className="text-sm font-medium tracking-wide text-foreground">技術スタック</h2>
           <p className="text-sm leading-7 text-muted">
             Next.js（静的書き出し）・TypeScript・素の Web Audio API・Zustand・Tailwind CSS。
-            音源は現時点では開発用の合成音のプレースホルダーです。ライセンス台帳は
+            サウンドの一部は開発用の合成音のプレースホルダーです。ライセンス台帳は
             <code className="rounded bg-surface px-1 py-0.5 text-[11px]"> docs/ASSET_LICENSES.md</code> で管理しています。
           </p>
         </section>

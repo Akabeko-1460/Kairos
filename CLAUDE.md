@@ -129,8 +129,15 @@
       Relax/Sleep が音響的にも完全に別物になった（Home の選択にも Pomodoro の Focus テーマ選択にも
       実際に反映される。旧: 見た目の色だけが違って音は同一という状態だった）。ノイズ色を
       ピンク/ブラウン/エアで使い分け、テーマごとに専用の scale/bpm/automation/IR を持つ。
-      プレースホルダー音源も全面差し替え（`scripts/generate-placeholder-audio.mjs`）。
-      未着手: フェーズ切替時の背景色4秒補間（`docs/02_SPEC.md` §6.3）
+      **rev.3.1**: 全テーマの音量を一律 -15% 下げ、texture/cue/cell を Wikimedia Commons の
+      実音源（雨・波の録音、鐘・鈴・カリンバの単音演奏）に差し替えた
+      （加工記録: `packages/audio-engine/tools/process-real-audio.mjs`、
+      出所・ライセンスは `docs/ASSET_LICENSES.md`、CC BY/CC BY-SA のクレジットは
+      `apps/web/app/credit` に掲載済み）。Pad（和声の土台）とノイズ色（ピンク/ブラウン/エア）・
+      Pulse は、テーマの調に正確なピッチの実音源が見つからなかった／精密な周波数特性の制御が
+      必要という理由で意図的に合成のまま維持（理由は `docs/ASSET_LICENSES.md` に記載）。
+      未着手: フェーズ切替時の背景色4秒補間（`docs/02_SPEC.md` §6.3）、
+      Pad の実音源化（A/D/E キーに合う安定したドローン録音の追加探索）
 - [ ] Phase 2: 生成エンジン本体（LoopManager のテイクローテーション、AI生成の本番素材への差し替え、実聴での音作り）
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張

@@ -35,7 +35,8 @@ export class CellScheduler {
     return {
       semitone: st + (this.rng() < 0.5 ? 0 : 12),
       pan: (this.rng() * 2 - 1) * 0.6,
-      gain: 0.5 + this.rng() * 0.35,
+      // 全体的な音量調整の一環で -15% ほど下げてある(旧: 0.5–0.85)。
+      gain: 0.43 + this.rng() * 0.3,
     };
   }
 
