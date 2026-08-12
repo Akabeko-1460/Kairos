@@ -5,7 +5,7 @@
  * （F-20）は `custom:` で始まる一意な文字列にする。複数のカスタムプリセットを共存させ、
  * 個別に削除できるようにするため、"custom" という単一の共有IDにはしない。
  */
-export type BuiltinPresetId = "standard" | "classic" | "deep";
+export type BuiltinPresetId = "classic" | "deep";
 
 export interface PomodoroPreset {
   readonly id: string;
@@ -20,16 +20,7 @@ export interface PomodoroPreset {
 
 const MINUTE_MS = 60_000;
 
-/** アプリ起動時の既定プリセット。25分Focus / 10分Break。 */
-export const STANDARD_PRESET: PomodoroPreset = {
-  id: "standard",
-  label: "25 / 10",
-  focusMs: 25 * MINUTE_MS,
-  shortBreakMs: 10 * MINUTE_MS,
-  longBreakMs: 30 * MINUTE_MS,
-  roundsBeforeLongBreak: 4,
-};
-
+/** アプリ起動時の既定プリセット。25分Focus / 5分Break。 */
 export const CLASSIC_PRESET: PomodoroPreset = {
   id: "classic",
   label: "25 / 5",
@@ -49,7 +40,6 @@ export const DEEP_PRESET: PomodoroPreset = {
 };
 
 export const PRESETS: Readonly<Record<BuiltinPresetId, PomodoroPreset>> = {
-  standard: STANDARD_PRESET,
   classic: CLASSIC_PRESET,
   deep: DEEP_PRESET,
 };

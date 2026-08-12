@@ -1,16 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { CLASSIC_PRESET, createCustomPreset, DEEP_PRESET, PRESETS, STANDARD_PRESET } from "./preset";
+import { CLASSIC_PRESET, createCustomPreset, DEEP_PRESET, PRESETS } from "./preset";
 
 describe("built-in presets", () => {
-  it("STANDARD_PRESET is 25分Focus/10分Break — アプリ起動時の既定プリセット", () => {
-    expect(STANDARD_PRESET.focusMs).toBe(25 * 60_000);
-    expect(STANDARD_PRESET.shortBreakMs).toBe(10 * 60_000);
-    expect(STANDARD_PRESET.label).toBe("25 / 10");
-    expect(STANDARD_PRESET.isCustom).toBeUndefined();
+  it("CLASSIC_PRESET is 25分Focus/5分Break — アプリ起動時の既定プリセット", () => {
+    expect(CLASSIC_PRESET.focusMs).toBe(25 * 60_000);
+    expect(CLASSIC_PRESET.shortBreakMs).toBe(5 * 60_000);
+    expect(CLASSIC_PRESET.label).toBe("25 / 5");
+    expect(CLASSIC_PRESET.isCustom).toBeUndefined();
   });
 
-  it("PRESETS exposes all 3 built-ins by id", () => {
-    expect(PRESETS.standard).toBe(STANDARD_PRESET);
+  it("PRESETS exposes both built-ins by id", () => {
     expect(PRESETS.classic).toBe(CLASSIC_PRESET);
     expect(PRESETS.deep).toBe(DEEP_PRESET);
   });

@@ -14,7 +14,7 @@ import {
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-const DEFAULT_DURATION_MS = 10 * 60_000; // 10分。25/10 は Pomodoro専用の既定プリセット（STANDARD_PRESET）の話であり、
+const DEFAULT_DURATION_MS = 10 * 60_000; // 10分。25/5 は Pomodoro専用の既定プリセット（CLASSIC_PRESET）の話であり、
 // ラウンド/休憩を持たない普通のタイマーにはそのまま適用しない。
 
 interface CountdownStore {

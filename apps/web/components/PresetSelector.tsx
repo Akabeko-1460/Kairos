@@ -1,7 +1,7 @@
 "use client";
 
 import { usePresetsStore } from "@/hooks/usePresets";
-import { CLASSIC_PRESET, DEEP_PRESET, STANDARD_PRESET, type PomodoroPreset } from "@kairos/core";
+import { CLASSIC_PRESET, DEEP_PRESET, type PomodoroPreset } from "@kairos/core";
 import { useState } from "react";
 import { CustomPresetModal } from "./CustomPresetModal";
 
@@ -19,7 +19,7 @@ export function PresetSelector({ selectedId, accentColor, onSelect }: PresetSele
   const [showModal, setShowModal] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
-  const allPresets: PomodoroPreset[] = [STANDARD_PRESET, CLASSIC_PRESET, DEEP_PRESET, ...customPresets];
+  const allPresets: PomodoroPreset[] = [CLASSIC_PRESET, DEEP_PRESET, ...customPresets];
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -56,7 +56,7 @@ export function PresetSelector({ selectedId, accentColor, onSelect }: PresetSele
                 aria-label={`${preset.label} を削除`}
                 onClick={() => {
                   removeCustomPreset(preset.id);
-                  if (active) onSelect(STANDARD_PRESET);
+                  if (active) onSelect(CLASSIC_PRESET);
                   setPendingDeleteId(null);
                 }}
                 className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white shadow"

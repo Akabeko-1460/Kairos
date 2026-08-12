@@ -224,7 +224,21 @@
       プリセット `STANDARD_PRESET`（25分/10分、id: `standard`）を追加してアプリ起動時の既定に
       した（Classic 25/5・Deep 50/10 は従来どおり選択可能）。Pomodoro の既定 Focus テーマも
       "work" → "study" に修正（Timer/Stopwatch はもともと "study" が既定で問題なし）。
-- [ ] Phase 2: 生成エンジン本体（LoopManager のテイクローテーション、AI生成の本番素材への差し替え、実聴での音作り）
+      **rev.6.2**: Timer/Stopwatch設定画面で「サウンドが鳴らない」報告を追跡し、
+      `ensureEngine()`（`apps/web/lib/soundscapeRuntime.ts`）に実在した競合状態を発見・修正。
+      `if (engine) return engine` だけでは初期化完了前の多重呼び出しを防げず、TopNavの
+      先取り初期化と各ページのマウント時初期化（Reactの StrictMode による副作用二重発火で
+      さらに助長）が重なると AudioContext / SoundscapeEngine が複数生成され、後勝ちの
+      インスタンスだけがモジュール変数に残り、先に作られた方に鳴らしたはずの音が届かず
+      消えることがあった。in-flightの Promise 自体をキャッシュする方式に変更し、
+      重複呼び出しは全員同じ初期化に相乗りするようにした。chrome-devtools MCP による
+      実ブラウザ計測で AudioContext が常に1個だけ生成されることを確認済み。
+      **rev.6.3**: 「25/10をデフォルトにする」変更（rev.6.1）を撤回し、Pomodoro の既定
+      プリセットを元の `25/5`（`CLASSIC_PRESET`）に戻した。`STANDARD_PRESET`（25/10、
+      id: `standard`）は削除し、`packages/core` の `BuiltinPresetId` は再び
+      `"classic" | "deep"` の2種のみになった。カスタムプリセットの右クリック削除
+      （赤いゴミ箱アイコン→クリックで削除、`PresetSelector.tsx`）は既存実装のまま維持
+      （ビルトインの Classic/Deep は右クリックしても反応しない設計を継続）。
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
 
