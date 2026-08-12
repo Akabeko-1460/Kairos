@@ -172,6 +172,43 @@ rev.2 までは Home 画面に Study/Work/Relax/Sleep/Move の5カテゴリが�
 
 ---
 
+## ADR-005: 「集中力を上げる」だけでなく「聞きよい（restorative）」方向へ調整する
+
+### 決定
+`endel.io/science` と Haruvi et al. (2022, PMC8829886) を追加参照し、以下を調整した:
+
+- `CellScheduler`（`packages/audio-engine/src/cell-scheduler.ts`）: 定位幅を ±0.6 → ±0.4 に、
+  ワンショットの gain レンジを 0.43–0.73 → 0.36–0.60 にさらに絞った
+- 実音源由来の Cell（`packages/audio-engine/tools/process-real-audio.mjs`）: フェードインを
+  0.005秒 → 0.015秒に伸ばしてクリック感を抑え、硬質な素材（学校鐘）には軽いローパス
+  （4.2kHz）をかけて丸めた
+- Move のテンポを 112 → 120bpm に変更（安静時心拍よりやや速い、との具体的な数値提示に合わせた）
+- Move と Relax の Cell 発火頻度をやや下げた（Move: 約4.5秒に1回 → 約6秒に1回、
+  Relax: 約20秒に1回 → 約24秒に1回）
+
+### 理由
+`docs/04_SOUND_ENGINE.md` §4 の設計はテーマごとの科学的根拠を反映していたが、Endel の
+設計原則（"stimulate concentration **without pulling you away from the task**"、Relax/Sleep は
+"restorative not entertaining" — クライマックスのない予測可能な構造）と突き合わせると、
+Cell 層（装飾的なワンショット）がやや前に出すぎていた。特に Wikimedia Commons から採用した
+学校鐘の実音源は素材の性質上やや硬質で、"calm and gentle" という Endel の言葉が示す方向性から
+外れていた。
+
+PMC8829886（Endel 社のEEG研究）は「パーソナライズされた音は無音より有意に集中力を高める
+（効果は約2.5分で発現）」「ジャンル分析ではクラシック音楽・自然音が最高、ポップ/ヒップホップが
+最低の集中スコア」と報告しており、具体的な周波数/テンポの最適値までは特定していない
+（研究の限界として明記されている）。これは既存設計の骨格（歌詞なし・一定拍・ジェネラティブな
+無限変化）を裏付けるものであり、今回は骨格を変えず、Cell 層の主張の強さと音色の硬さを
+下げる方向で調整した。
+
+### 影響
+- `packages/audio-engine/src/cell-scheduler.ts`, `packages/audio-engine/tools/process-real-audio.mjs`,
+  `apps/web/public/packs.json`, `packages/audio-engine/src/automation.ts`,
+  `scripts/generate-placeholder-audio.mjs` を変更
+- テーマの key/scale/kind やレイヤー構成（pad/texture/pulse/cell の役割分担）は変更していない
+
+---
+
 ## 併用する Web API
 
 | API | 用途 | Phase |

@@ -159,10 +159,10 @@ rev.3（`03_ARCHITECTURE.md` ADR-004）から、この弧は5つのテーマ（s
 | 項目 | **Study** | **Work** | **Move** |
 |---|---|---|---|
 | Key / Scale | A Aeolian | A Dorian | E Major Pentatonic |
-| BPM | 68（安静時心拍に近い一定リズム） | 76（Studyよりやや速く覚醒度を上げる） | 112（運動的・明るいテンポ） |
+| BPM | 68（安静時心拍に近い一定リズム） | 76（Studyよりやや速く覚醒度を上げる） | 120（運動的・明るいテンポ、安静時心拍よりやや速い） |
 | Texture | ピンクノイズのみ（純粋なマスキング） | ピンクノイズ＋ハムのブレンド（「オフィス」の質感） | 高域寄りの軽いエア質感（マスキングより開放感） |
 | Pulse (Sustain) | 0.42（控えめ、一定） | 0.52（やや前に出る） | 0.68（強く推進力を出す） |
-| Cell 発火頻度 | 約11秒に1回 | 約7.7秒に1回 | 約4.5秒に1回（生気） |
+| Cell 発火頻度 | 約11秒に1回 | 約7.7秒に1回 | 約6秒に1回（生気） |
 | Reverb (Sustain) | 0.20（小部屋、明瞭） | 0.16（タイトでドライ） | 0.10（さらにドライ、パンチを殺さない） |
 | Low-pass (Sustain) | 6000Hz | 7200Hz | 9500Hz（明るく開放的） |
 | 根拠 | ChatGPT報告「作業タイプ依存性」表: 集中学習は一定テンポ・歌詞なし・ピンクノイズ・音量中 | Gemini報告 §3.2: 単純作業はやや速いテンポで交感神経を軽く刺激 | 両報告: 明るいテンポの音楽が気分と覚醒度を高める（100–140BPM） |
@@ -172,6 +172,9 @@ rev.3（`03_ARCHITECTURE.md` ADR-004）から、この弧は5つのテーマ（s
 - 「刺激的だが決して気を散らさない」→ Sustain 中の変化は無し。メロディックな展開を作らない
 - Cell はスケール内の音だけを選ぶ（`CellScheduler`）ので、密度をどれだけ上げても不協和にならない
 - 歌詞・言語情報のある音は一切使わない（無関連発話効果 / ISE、Gemini報告 §3.1）
+- （`03_ARCHITECTURE.md` ADR-005）Endel Science（"stimulate concentration without pulling you
+  away from the task"）と Haruvi et al. 2022（PMC8829886）を踏まえ、Cell の定位幅・音量を
+  さらに絞り、実音源の硬さを和らげてある。集中力そのものより「聞きよさ」を最終仕上げの軸にした
 
 ### 4.2 Break 系テーマ（Relax / Sleep）— 区間構造は共通
 
@@ -199,11 +202,11 @@ rev.3（`03_ARCHITECTURE.md` ADR-004）から、この弧は5つのテーマ（s
 
 | 要素 | Study | Work | Move | Relax | Sleep |
 |---|---|---|---|---|---|
-| 拍 | あり・一定 68bpm | あり・一定 76bpm | あり・一定 112bpm | なし | なし |
+| 拍 | あり・一定 68bpm | あり・一定 76bpm | あり・一定 120bpm | なし | なし |
 | Noise color | ピンク | ピンク＋ハム | 軽いエア（ハイパス強め） | 自然音（雨/波） | ブラウン |
 | Reverb | 小部屋 0.20–0.28 | 小部屋 0.16–0.22 | ドライ 0.10–0.14 | ホール 0.45–0.65 | 深ホール 0.55–0.75 |
 | Low-pass | 6000Hz | 7200Hz | 9500Hz | 1800–3000Hz | 1000–1600Hz |
-| Cell 発火頻度 | 約11秒に1回 | 約7.7秒に1回 | 約4.5秒に1回 | 約20–30秒に1回 | 約50秒に1回 |
+| Cell 発火頻度 | 約11秒に1回 | 約7.7秒に1回 | 約6秒に1回 | 約24–40秒に1回 | 約50秒に1回 |
 | 呼吸 | 無し | 無し | 無し | 0.08Hz | 0.045Hz |
 | Pomodoro での役割 | Focus（選択可） | Focus（選択可・既定） | Focus（選択可） | shortBreak（固定） | longBreak（固定） |
 
@@ -448,7 +451,7 @@ export class CellScheduler {
 > bright ambient pad, E major pentatonic, energetic but not busy, no percussion, no melody, seamless loop, 24 seconds
 
 **Move / Pulse**
-> bright rhythmic pulse, 112 BPM, crisp percussive tick with short noise transient, no melody, no bass line, driving and energetic, seamless loop
+> bright rhythmic pulse, 120 BPM, crisp percussive tick with short noise transient, no melody, no bass line, driving and energetic, seamless loop
 
 **Move / Cell（ワンショット）**
 > single bright pluck / mallet tone, E4, quick decay, isolated single note

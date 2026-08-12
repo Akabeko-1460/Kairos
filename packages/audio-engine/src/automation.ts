@@ -164,10 +164,10 @@ export const moveAutomation: PhaseAutomation = {
     [0.97, 0.0],
   ],
   cellDensity: [
-    [0.0, 0.05],
-    [0.1, 0.22],
-    [0.8, 0.22],
-    [0.9, 0.08],
+    [0.0, 0.04],
+    [0.1, 0.17],
+    [0.8, 0.17],
+    [0.9, 0.06],
     [1.0, 0.02],
   ],
   reverbWet: [
@@ -211,10 +211,10 @@ export const relaxAutomation: PhaseAutomation = {
   ],
   pulse: NO_PULSE,
   cellDensity: [
-    [0.0, 0.06],
-    [0.2, 0.03],
-    [0.85, 0.03],
-    [1.0, 0.05],
+    [0.0, 0.05],
+    [0.2, 0.025],
+    [0.85, 0.025],
+    [1.0, 0.04],
   ],
   reverbWet: [
     [0.0, 0.45],

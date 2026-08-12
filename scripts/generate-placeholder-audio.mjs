@@ -379,18 +379,18 @@ async function main() {
   await saveWav("audio/work/cell_c4.wav", generateOneShot(noteFreq("c4"), 2.0, 1.2, 1233));
   await saveWav("audio/work/cell_e4.wav", generateOneShot(noteFreq("e4"), 2.0, 1.2, 1234));
 
-  console.log("Move 層を生成中...（E major pentatonic, 112bpm — 明るく速い、推進力のある音）");
+  console.log("Move 層を生成中...（E major pentatonic, 120bpm — 明るく速い、推進力のある音）");
   await saveWav("audio/move/pad_01.wav", generatePad("e4", [0, 4, 7, 9], 24, 1301));
   await saveWav("audio/move/pad_02.wav", generatePad("e4", [0, 4, 9], 24, 1302));
   await saveWav("audio/move/texture_air_a.wav", generateTexture("air", 16, 1311));
   await saveWav("audio/move/texture_air_b.wav", generateTexture("air", 16, 1312));
   await saveWav(
     "audio/move/pulse_01.wav",
-    generatePulse(112, 16, 1321, { toneHz: 220, toneGain: 0.55, noiseGain: 0.35, decayK: 55, clickSec: 0.05 }),
+    generatePulse(120, 16, 1321, { toneHz: 220, toneGain: 0.55, noiseGain: 0.35, decayK: 55, clickSec: 0.05 }),
   );
   await saveWav(
     "audio/move/pulse_02.wav",
-    generatePulse(112, 16, 1322, { toneHz: 220, toneGain: 0.55, noiseGain: 0.35, decayK: 55, clickSec: 0.05 }),
+    generatePulse(120, 16, 1322, { toneHz: 220, toneGain: 0.55, noiseGain: 0.35, decayK: 55, clickSec: 0.05 }),
   );
   const movePluck = { partialGains: [1, 0.5, 0.25], shimmerGain: 0.05 };
   await saveWav("audio/move/cell_e4.wav", generateOneShot(noteFreq("e4"), 1.1, 3.2, 1331, movePluck));

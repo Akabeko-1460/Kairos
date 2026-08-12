@@ -68,6 +68,20 @@ function peakNormalize(samples, targetPeak) {
   return scale(samples, targetPeak / peak);
 }
 
+/** 単純な一次ローパス(RC)フィルタ。硬質な素材の高域を軽く削って耳当たりを柔らかくする。 */
+function onePoleLowpass(samples, sampleRate, cutoffHz) {
+  const rc = 1 / (2 * Math.PI * cutoffHz);
+  const dt = 1 / sampleRate;
+  const alpha = dt / (rc + dt);
+  const out = new Float32Array(samples.length);
+  let prev = 0;
+  for (let i = 0; i < samples.length; i++) {
+    prev = prev + alpha * (samples[i] - prev);
+    out[i] = prev;
+  }
+  return out;
+}
+
 function fadeInOut(samples, sampleRate, fadeInSec, fadeOutSec) {
   const out = samples.slice();
   const nIn = Math.round(fadeInSec * sampleRate);
@@ -161,15 +175,22 @@ async function makeTexture(filename, startSec, durationSec, targetPeak = 0.35) {
   return loopifyEqualPower(normalized, audioBuffer.sampleRate, Math.min(1.5, durationSec * 0.08));
 }
 
-/** ワンショット(ベル/打楽器)をオンセットから切り出す。thresholdRatio は減衰の緩やかな素材(鈴の余韻など)向けに下げられる。 */
-async function makeOneShot(filename, offsetSec, durationSec, targetPeak = 0.7, thresholdRatio = 0.3) {
+/**
+ * ワンショット(ベル/打楽器)をオンセットから切り出す。
+ * thresholdRatio は減衰の緩やかな素材(鈴の余韻など)向けに下げられる。
+ * softenHz を指定すると軽いローパスをかけ、硬質な素材（学校鐘など）の耳当たりを柔らかくする
+ * （Endel Science: "restorative not entertaining" — 装飾的な Cell 層が刺激的になりすぎないように）。
+ * fadeIn も 0.005s → 0.015s に伸ばし、クリック感を抑えたなだらかなアタックにする。
+ */
+async function makeOneShot(filename, offsetSec, durationSec, targetPeak = 0.7, thresholdRatio = 0.3, softenHz = null) {
   const audioBuffer = await decode(filename);
   const mono = toMono(audioBuffer);
   const searchStart = slice(mono, offsetSec, mono.length / audioBuffer.sampleRate, audioBuffer.sampleRate);
   const onsetLocal = findOnset(searchStart, audioBuffer.sampleRate, thresholdRatio);
   const onsetGlobalSec = offsetSec + onsetLocal / audioBuffer.sampleRate;
-  const cut = slice(mono, onsetGlobalSec, onsetGlobalSec + durationSec, audioBuffer.sampleRate);
-  const faded = fadeInOut(cut, audioBuffer.sampleRate, 0.005, Math.min(0.3, durationSec * 0.15));
+  let cut = slice(mono, onsetGlobalSec, onsetGlobalSec + durationSec, audioBuffer.sampleRate);
+  if (softenHz) cut = onePoleLowpass(cut, audioBuffer.sampleRate, softenHz);
+  const faded = fadeInOut(cut, audioBuffer.sampleRate, 0.015, Math.min(0.35, durationSec * 0.18));
   return peakNormalize(faded, targetPeak);
 }
 
@@ -189,8 +210,16 @@ function digestOf(samples) {
   return h;
 }
 
-async function saveOneShot(relativePath, filename, offsetSec, durationSec, targetPeak = 0.7, thresholdRatio = 0.3) {
-  const samples = await makeOneShot(filename, offsetSec, durationSec, targetPeak, thresholdRatio);
+async function saveOneShot(
+  relativePath,
+  filename,
+  offsetSec,
+  durationSec,
+  targetPeak = 0.7,
+  thresholdRatio = 0.3,
+  softenHz = null,
+) {
+  const samples = await makeOneShot(filename, offsetSec, durationSec, targetPeak, thresholdRatio, softenHz);
   assertNotSilent(relativePath, samples);
   const digest = digestOf(samples);
   const prior = seenDigests.get(digest);
@@ -215,20 +244,24 @@ async function main() {
   await saveWav("audio/relax/texture_rain.wav", await makeTexture("rain_against_window.ogg", 8, 24));
   await saveWav("audio/relax/texture_waves.wav", await makeTexture("waves_lake_ontario.ogg", 30, 24));
 
+  // old_school_bell_1 は「学校のベル」という素材の性質上やや硬質・事務的な響きを持つため、
+  // softenHz で軽くローパスをかけて丸める（Endel Science: "restorative not entertaining"）。
+  const SOFTEN_SCHOOL_BELL_HZ = 4200;
+
   console.log("=== Cue (全テーマ共通) ===");
   await saveOneShot("audio/cues/soft_chime.wav", "bienenkorbglocke.ogg", 0.6, 2.0, 0.7);
-  await saveOneShot("audio/cues/resolve.wav", "old_school_bell_1.ogg", 0.3, 2.6, 0.7);
+  await saveOneShot("audio/cues/resolve.wav", "old_school_bell_1.ogg", 0.3, 2.6, 0.7, 0.3, SOFTEN_SCHOOL_BELL_HZ);
 
   console.log("=== Study cell (aeolian, 落ち着いたベル/鈴) ===");
-  await saveOneShot("audio/study/cell_a3.wav", "old_school_bell_1.ogg", 3, 2.2);
+  await saveOneShot("audio/study/cell_a3.wav", "old_school_bell_1.ogg", 3, 2.2, 0.7, 0.3, SOFTEN_SCHOOL_BELL_HZ);
   await saveOneShot("audio/study/cell_c4.wav", "japanese_rin.ogg", 3.2, 2.3);
   await saveOneShot("audio/study/cell_e4.wav", "japanese_rin.ogg", 4.5, 2.3, 0.7, 0.15);
-  await saveOneShot("audio/study/cell_g4.wav", "old_school_bell_1.ogg", 6, 2.0);
+  await saveOneShot("audio/study/cell_g4.wav", "old_school_bell_1.ogg", 6, 2.0, 0.7, 0.3, SOFTEN_SCHOOL_BELL_HZ);
 
   console.log("=== Work cell (dorian, 学校鐘+グロッケン) ===");
-  await saveOneShot("audio/work/cell_a3.wav", "old_school_bell_1.ogg", 9, 2);
-  await saveOneShot("audio/work/cell_b3.wav", "old_school_bell_1.ogg", 12, 2);
-  await saveOneShot("audio/work/cell_c4.wav", "old_school_bell_1.ogg", 15, 2);
+  await saveOneShot("audio/work/cell_a3.wav", "old_school_bell_1.ogg", 9, 2, 0.7, 0.3, SOFTEN_SCHOOL_BELL_HZ);
+  await saveOneShot("audio/work/cell_b3.wav", "old_school_bell_1.ogg", 12, 2, 0.7, 0.3, SOFTEN_SCHOOL_BELL_HZ);
+  await saveOneShot("audio/work/cell_c4.wav", "old_school_bell_1.ogg", 15, 2, 0.7, 0.3, SOFTEN_SCHOOL_BELL_HZ);
   await saveOneShot("audio/work/cell_e4.wav", "spielwiese_glocken.ogg", 0, 1.5);
 
   console.log("=== Move cell (major pentatonic, カリンバ) ===");
