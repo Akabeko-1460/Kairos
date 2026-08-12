@@ -96,7 +96,7 @@ export const networkStyle: VisualStyle<NetworkState> = {
       const [x2, y2] = positions[e.b]!;
       const midR = (Math.hypot(x1 - cx, y1 - cy) + Math.hypot(x2 - cx, y2 - cy)) / 2;
       const waveHit = smoothPulse(midR, waveRadius, waveBand);
-      ctx.strokeStyle = rgba(rgb, (0.07 + edgeAmp * 0.14 + waveHit * 0.4) * breath);
+      ctx.strokeStyle = rgba(rgb, (0.07 + edgeAmp * 0.14 + waveHit * 0.3) * breath);
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
@@ -127,10 +127,10 @@ export const networkStyle: VisualStyle<NetworkState> = {
       const localAmp = band(node.ring * 0.15, node.ring * 0.15 + 0.3);
       const r = Math.hypot(pos[0] - cx, pos[1] - cy);
       const waveHit = smoothPulse(r, waveRadius, waveBand);
-      const radius = Math.max(1.6, minDim * 0.004) * (0.7 + localAmp * 0.7 + waveHit * 0.6);
+      const radius = Math.max(1.6, minDim * 0.004) * (0.7 + localAmp * 0.7 + waveHit * 0.45);
       ctx.beginPath();
       ctx.arc(pos[0], pos[1], radius, 0, Math.PI * 2);
-      ctx.fillStyle = rgba(rgb, (0.3 + localAmp * 0.35 + waveHit * 0.35) * breath);
+      ctx.fillStyle = rgba(rgb, (0.3 + localAmp * 0.35 + waveHit * 0.26) * breath);
       ctx.fill();
     }
 

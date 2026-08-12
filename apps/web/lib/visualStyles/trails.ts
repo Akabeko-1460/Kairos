@@ -1,5 +1,5 @@
 import { STORY_PERIOD_SEC, storyBreath } from "../storyPeriods";
-import { cyclePhase, easeInOutCubic, mulberry32, rgba, smoothPulse, type VisualStyle } from "./shared";
+import { cyclePhase, easeInOutCubic, mulberry32, rgba, type VisualStyle } from "./shared";
 
 // ============================================================================
 // Move — 「静けさから助走し、ピークで弾け、また落ち着く」インターバルの物語。
@@ -62,32 +62,6 @@ export const trailsStyle: VisualStyle<TrailsState> = {
       ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fillStyle = rgba(rgb, (0.4 + energy * 0.35 + localAmp * 0.25) * breath);
       ctx.fill();
-    }
-
-    // ピーク到達の瞬間に中心から放射状のバースト（インターバルの山場）
-    const cycleIdx = Math.floor(t / MOVE_PERIOD);
-    const burstWindow = smoothPulse(phase, 0.42, 0.06);
-    if (burstWindow > 0.01) {
-      // 3インターバルに1回（長周期 = 主周期の3倍）は光線の本数・長さを増やした
-      // 「大きな節目」のバーストにする。毎回同じ強さだと単調になるための変化。
-      const isMilestone = cycleIdx % 3 === 0;
-      const rngBurst = mulberry32(state.seedBase + cycleIdx * 911);
-      const rayCount = isMilestone ? 22 : 14;
-      const lenMul = isMilestone ? 1.6 : 1;
-      for (let i = 0; i < rayCount; i++) {
-        const a = (i / rayCount) * Math.PI * 2 + rngBurst();
-        const len = minDim * (0.06 + rngBurst() * 0.18) * burstWindow * lenMul;
-        const x1 = cx + Math.cos(a) * (hole + minDim * 0.02);
-        const y1 = cy + Math.sin(a) * (hole + minDim * 0.02);
-        const x2 = cx + Math.cos(a) * (hole + minDim * 0.02 + len);
-        const y2 = cy + Math.sin(a) * (hole + minDim * 0.02 + len);
-        ctx.strokeStyle = rgba(rgb, (isMilestone ? 0.6 : 0.5) * burstWindow);
-        ctx.lineWidth = Math.max(1, minDim * 0.002);
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-      }
     }
 
     // 副リサージュ軌道: 主パーティクル群と同格の広がりを持つ、もう1つのリサージュ曲線。

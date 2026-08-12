@@ -12,13 +12,23 @@ interface FlowParticle {
   life: number;
   seed: number;
 }
+interface LeafParticle {
+  x: number;
+  y: number;
+  life: number;
+  seed: number;
+  heading: number; // 進行方向。急に向きを変えず、なめらかに追従させる
+  sizeRatio: number; // minDim に対する比率
+}
 interface FlowState {
   particles: FlowParticle[];
+  leaves: LeafParticle[];
   noise: ReturnType<typeof createNoise3D>;
   rng: () => number;
 }
 
 const FLOW_PARTICLE_COUNT = 150;
+const FLOW_LEAF_COUNT = 10; // 葉。ドット粒子より少なく・大きく・ゆっくり
 const RELAX_PERIOD = STORY_PERIOD_SEC.flow; // 秒。緊張→溶解→解放→結晶化のサイクル。シェーダー背景と同期
 
 function resetFlowParticle(p: FlowParticle, f: Frame, rng: () => number): void {
@@ -27,6 +37,48 @@ function resetFlowParticle(p: FlowParticle, f: Frame, rng: () => number): void {
   p.y = f.cy + (rng() - 0.5) * (f.h - margin);
   p.life = 0.5 + rng() * 0.5;
   p.seed = rng() * 1000;
+}
+
+function resetLeaf(p: LeafParticle, f: Frame, rng: () => number): void {
+  const margin = f.minDim * 0.06;
+  p.x = f.cx + (rng() - 0.5) * (f.w - margin);
+  p.y = f.cy + (rng() - 0.5) * (f.h - margin);
+  p.life = 0.6 + rng() * 0.6;
+  p.seed = rng() * 1000;
+  p.heading = rng() * Math.PI * 2;
+  p.sizeRatio = 0.014 + rng() * 0.012;
+}
+
+/**
+ * 葉のシルエット（中央脈付きの木の葉形）を風に揺れる姿で描く。
+ * 抽象的な生成アートの語彙（曲線・粒子）を崩さないまま「葉」だと分かる程度に具象化する。
+ */
+function drawLeaf(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  angle: number,
+  alpha: number,
+  rgb: readonly [number, number, number],
+): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(0, -size);
+  ctx.bezierCurveTo(size * 0.62, -size * 0.42, size * 0.62, size * 0.5, 0, size);
+  ctx.bezierCurveTo(-size * 0.62, size * 0.5, -size * 0.62, -size * 0.42, 0, -size);
+  ctx.closePath();
+  ctx.fillStyle = rgba(rgb, alpha);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(0, -size * 0.82);
+  ctx.lineTo(0, size * 0.82);
+  ctx.strokeStyle = rgba(rgb, alpha * 1.4);
+  ctx.lineWidth = Math.max(0.6, size * 0.06);
+  ctx.stroke();
+  ctx.restore();
 }
 
 export const flowStyle: VisualStyle<FlowState> = {
@@ -41,7 +93,15 @@ export const flowStyle: VisualStyle<FlowState> = {
       life: 0,
       seed: 0,
     }));
-    return { particles, noise, rng };
+    const leaves: LeafParticle[] = Array.from({ length: FLOW_LEAF_COUNT }, () => ({
+      x: 0,
+      y: 0,
+      life: 0,
+      seed: 0,
+      heading: 0,
+      sizeRatio: 0.018,
+    }));
+    return { particles, leaves, noise, rng };
   },
   draw(f, state) {
     const { ctx, minDim, w, h, cx, cy, t, amp, rgb, hole } = f;
@@ -89,7 +149,7 @@ export const flowStyle: VisualStyle<FlowState> = {
         else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.strokeStyle = rgba(rgb, 0.4 * polyAlpha * breath);
+      ctx.strokeStyle = rgba(rgb, 0.12 * polyAlpha * breath);
       ctx.lineWidth = Math.max(1, minDim * 0.0018);
       ctx.stroke();
       ctx.restore();
@@ -141,10 +201,38 @@ export const flowStyle: VisualStyle<FlowState> = {
         else ctx.lineTo(x, y);
       }
       ctx.closePath();
-      ctx.strokeStyle = rgba(rgb, 0.22 * secondaryAlpha * breath);
+      ctx.strokeStyle = rgba(rgb, 0.07 * secondaryAlpha * breath);
       ctx.lineWidth = Math.max(0.8, minDim * 0.0014);
       ctx.stroke();
       ctx.restore();
+    }
+
+    // 葉: フローフィールドに乗って漂う木の葉（緊張の象徴だった多角形に代わり、
+    // 「自然の中で佇む」物語の主役をこちらへ渡す）。粒子と同じノイズ場を使うことで
+    // 「同じ風・同じ水面」を漂っているという一体感を保つ。
+    for (const leaf of state.leaves) {
+      if (leaf.life <= 0) resetLeaf(leaf, f, state.rng);
+      const n = state.noise(leaf.x * 0.0014, leaf.y * 0.0014, t * 0.05 + leaf.seed * 0.001);
+      const flowAngle = n * Math.PI * 4;
+      const speed = minDim * 0.00022 * (0.5 + amp * 0.9);
+      leaf.x += Math.cos(flowAngle) * speed;
+      leaf.y += Math.sin(flowAngle) * speed;
+      leaf.life -= 0.0009;
+      // 進行方向へゆっくり向きを合わせつつ、常に一定量だけ揺れ続ける（風に揺れる葉のふるまい）
+      let headingDiff = flowAngle - leaf.heading;
+      headingDiff = Math.atan2(Math.sin(headingDiff), Math.cos(headingDiff));
+      leaf.heading += headingDiff * 0.01;
+      const sway = Math.sin(t * 0.6 + leaf.seed) * 0.35;
+
+      const distFromCenter = Math.hypot(leaf.x - cx, leaf.y - cy);
+      if (leaf.x < 0 || leaf.x > w || leaf.y < 0 || leaf.y > h || leaf.life <= 0 || distFromCenter < hole) {
+        resetLeaf(leaf, f, state.rng);
+        continue;
+      }
+
+      const size = minDim * leaf.sizeRatio * (0.85 + amp * 0.3);
+      const alpha = 0.22 * leaf.life * breath;
+      drawLeaf(ctx, leaf.x, leaf.y, size, leaf.heading + Math.PI / 2 + sway, alpha, rgb);
     }
   },
 };
