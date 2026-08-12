@@ -60,12 +60,26 @@ export default function StopwatchPage() {
   const accent = theme.accent;
   const elapsed = stopwatchElapsedMs(state, now);
 
-  // 設定画面（idle）では、選択中のサウンドと背景を常に再生しておく（Timer と同じ仕様）。
+  // 設定画面（idle）に入った瞬間から、選択中のサウンドと背景を再生しておく（Timer と同じ仕様）。
+  // engineReady を待たず、ここで直接 ensureEngine() を呼ぶ（既に用意済みなら即resolveする
+  // だけなので安全）。TopNav の Timers メニューはクリック時点で先取り初期化もしているが、
+  // それに頼り切らずこの画面自身でも起動できるようにしている。
   useEffect(() => {
-    if (!engineReady || !isIdle || isPreviewingSelected) return;
-    void playFreeplay(selectedThemeId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engineReady, isIdle, selectedThemeId]);
+    if (!isIdle || isPreviewingSelected) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await ensureEngine();
+        if (cancelled) return;
+        await playFreeplay(selectedThemeId);
+      } catch (err) {
+        console.error("[Kairos] SoundscapeEngine error:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isIdle, selectedThemeId, ensureEngine, playFreeplay, isPreviewingSelected]);
 
   useEffect(() => {
     setBackgroundArt({

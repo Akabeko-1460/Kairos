@@ -79,16 +79,27 @@ export default function TimerPage() {
     }
   }, [running, state, now, syncToNow, stopFreeplay]);
 
-  // 設定画面（idle/completed）では、選択中のサウンドと背景を常に再生しておく
-  // （Home のフリー再生と同じ「選ぶ＝鳴る」体験）。エンジンが既に用意されている
-  // （他画面で一度でもユーザー操作を経ている）場合は、この画面に入った直後にも自動で始める。
-  // AudioContext はユーザー操作起点でしか作れない（ADR-003）ため、まだ未初期化の場合は
-  // テーマ選択やStartのクリックそのものを起点に ensureEngine() する（下記ハンドラ側）。
+  // 設定画面（idle/completed）に入った瞬間から、選択中のサウンドと背景を再生しておく
+  // （Home のフリー再生と同じ「選ぶ＝鳴る」体験）。engineReady を待たず、ここで直接
+  // ensureEngine() を呼ぶ（既に用意済みなら即resolveするだけなので安全）。TopNav の
+  // Timers メニューはクリック時点で先取り初期化もしているが、それに頼り切らずこの
+  // 画面自身でも起動できるようにして、Home以外の経路で来ても必ず鳴るようにする。
   useEffect(() => {
-    if (!engineReady || !isIdle || isPreviewingSelected) return;
-    void playFreeplay(selectedThemeId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engineReady, isIdle, selectedThemeId]);
+    if (!isIdle || isPreviewingSelected) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await ensureEngine();
+        if (cancelled) return;
+        await playFreeplay(selectedThemeId);
+      } catch (err) {
+        console.error("[Kairos] SoundscapeEngine error:", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isIdle, selectedThemeId, ensureEngine, playFreeplay, isPreviewingSelected]);
 
   useEffect(() => {
     setBackgroundArt({
