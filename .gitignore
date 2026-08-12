@@ -28,3 +28,10 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Claude Code / Next.js Agents 向けの内部指示ファイル。プロジェクト固有の設計判断を含むため、
+# GitHub上のリポジトリには置かず、ローカルにのみ保持する（ユーザー指示）。
+# apps/web/AGENTS.md は next dev が自動生成する定型文なので、削除しても再度ローカルに現れうるが、
+# ここでignoreしてあるため再track はされない。
+CLAUDE.md
+AGENTS.md
