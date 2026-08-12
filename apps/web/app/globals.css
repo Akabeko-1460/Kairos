@@ -38,6 +38,21 @@ body {
 }
 
 /*
+ * type="number" のクリック可能なスピンボタン（増減矢印）だけを消す。矢印キーでの
+ * increment/decrement はブラウザのネイティブ挙動のまま残る（見た目を消しても消えない）。
+ * CustomPresetModal の Focus/Break/ラウンド数入力で使用。
+ */
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spinner {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+/*
  * 音量スライダー。ブラウザ既定のカラフルな太いバーは主張が強すぎるため、
  * 細いトラック + 小さいつまみの控えめな見た目にする（docs/02_SPEC.md §6.1: UIは目立たせない）。
  * つまみの色はJS側で accent-color としてではなく currentColor 経由で渡す想定。
