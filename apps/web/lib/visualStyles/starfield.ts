@@ -163,12 +163,11 @@ export const starfieldStyle: VisualStyle<StarfieldState> = {
       angle0: rng() * Math.PI * 2,
       speed: ((0.0035 + rng() * 0.003) / (1 + i * 0.6)) * (rng() < 0.5 ? 1 : -1),
     }));
-    // 星座: 実在の星座の形（CONSTELLATION_SHAPES）を、夜空のあちこちに違う大きさ・向きで配置する。
-    // 形の種類は3つしかないが、数を増やす分は配置・向き・大きさを変えて巡回させる
-    // （全く同じ見た目の星座が2つ現れることはない）。
+    // 星座: 実在の星座の形（CONSTELLATION_SHAPES）を、夜空のあちこちに配置する。
+    // 同じ星座を2つ以上配置しないよう、形の種類数（3つ）ぶんだけ、重複なくシャッフルして使う。
     const shapeOrder = [0, 1, 2].sort(() => rng() - 0.5);
-    const constellations: ConstellationGroup[] = Array.from({ length: 4 }, (_, i) => ({
-      shapeIndex: shapeOrder[i % shapeOrder.length]!,
+    const constellations: ConstellationGroup[] = shapeOrder.map((shapeIndex, i) => ({
+      shapeIndex,
       centerNx: 0.18 + rng() * 0.64,
       centerNy: 0.14 + rng() * 0.5,
       scale: 0.1 + rng() * 0.05,
