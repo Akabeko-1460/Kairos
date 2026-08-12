@@ -16,10 +16,12 @@ export function useSoundscape() {
   const debugInfo = useSoundscapeRuntime((s) => s.debugInfo);
   const masterVolume = useSoundscapeRuntime((s) => s.masterVolume);
   const setMasterVolume = useSoundscapeRuntime((s) => s.setMasterVolume);
+  const focusThemeId = useSoundscapeRuntime((s) => s.focusThemeId);
+  const setFocusThemeId = useSoundscapeRuntime((s) => s.setFocusThemeId);
 
   useEffect(() => {
     switchToTimerMode();
   }, [switchToTimerMode]);
 
-  return { ensureEngine, engineReady, debugInfo, masterVolume, setMasterVolume };
+  return { ensureEngine, engineReady, debugInfo, masterVolume, setMasterVolume, focusThemeId, setFocusThemeId };
 }

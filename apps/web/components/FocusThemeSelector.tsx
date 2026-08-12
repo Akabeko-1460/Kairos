@@ -2,11 +2,12 @@
 
 import { SoundIcon } from "@/components/SoundIcon";
 import { FOCUS_SOUND_THEMES } from "@/lib/soundThemes";
+import type { ThemeId } from "@kairos/audio-engine";
 import { motion } from "framer-motion";
 
 interface FocusThemeSelectorProps {
-  selectedId: string;
-  onSelect: (id: string) => void;
+  selectedId: ThemeId;
+  onSelect: (id: ThemeId) => void;
 }
 
 /**

@@ -122,10 +122,16 @@
       Credit（説明・参考文献）の3タブ構成に拡張し、カスタムプリセット（作成・右クリック削除）も
       追加済み。エンジンはページ遷移をまたいで単一の AudioContext を共有するシングルトン設計
       （`apps/web/lib/soundscapeRuntime.ts`）。Break フェーズで無音になるバグ（フェーズ変化検出後に
-      実際の遷移呼び出しを忘れていた）を発見・修正済み。未着手: フェーズ切替時の背景色4秒補間
-      （`docs/02_SPEC.md` §6.3）、Home画面の追加サウンドパック（現状 Focus/Break の2種のみで、
-      他は鍵アイコンのプレースホルダー）
-- [ ] Phase 2: 生成エンジン本体（LoopManager のテイクローテーション、AI生成の本番素材、実聴での音作り）
+      実際の遷移呼び出しを忘れていた）を発見・修正済み。
+      **rev.3（本セッション）**: `docs/deep-research-report_chatGPT.md` /
+      `集中力を高める音の文献調査_gemini.md` の文献調査をもとに、サウンドを「フェーズ(focus/break)」
+      単位から「テーマ(5種)」単位に再構築（`docs/03_ARCHITECTURE.md` ADR-004）。Study/Work/Move/
+      Relax/Sleep が音響的にも完全に別物になった（Home の選択にも Pomodoro の Focus テーマ選択にも
+      実際に反映される。旧: 見た目の色だけが違って音は同一という状態だった）。ノイズ色を
+      ピンク/ブラウン/エアで使い分け、テーマごとに専用の scale/bpm/automation/IR を持つ。
+      プレースホルダー音源も全面差し替え（`scripts/generate-placeholder-audio.mjs`）。
+      未着手: フェーズ切替時の背景色4秒補間（`docs/02_SPEC.md` §6.3）
+- [ ] Phase 2: 生成エンジン本体（LoopManager のテイクローテーション、AI生成の本番素材への差し替え、実聴での音作り）
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
 

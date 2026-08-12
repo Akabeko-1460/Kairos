@@ -1,4 +1,4 @@
-# 04. サウンドスケープ生成エンジン設計（rev.2 / Web Audio API）
+# 04. サウンドスケープ生成エンジン設計（rev.3 / Web Audio API）
 
 **このドキュメントが本プロジェクトの中核です。** タイマーは既製品でも作れますが、
 アプリの価値は「25分という時間に対して音の弧を描く」ここに集約されます。
@@ -85,117 +85,127 @@ analyser.connect(ctx.destination);
 
 ## 3. サウンドパック定義
 
-`apps/web/public/packs.json`:
+rev.3（`03_ARCHITECTURE.md` ADR-004）から、音響定義の単位は「フェーズ(focus/break)」ではなく
+「**テーマ**」になった。テーマは Home / Pomodoro の UI に並ぶ5つ
+（`study` / `work` / `move` / `relax` / `sleep`）と1:1で対応し、各テーマが
+key / scale / bpm / layers に加えて**自分専用の `PhaseAutomation` を内包する**
+（データ駆動。コード側にフェーズ別の automation をハードコードしない）。
+
+`study` / `work` / `move` は Pomodoro の Focus フェーズで、`relax` / `sleep` は
+Break フェーズ（`shortBreak` → relax、`longBreak` → sleep）で使う
+（`ThemeSoundDefinition.kind` で区別。クロスフェード可否には影響しない — テーマ間の
+切り替えは常にクロスフェードする）。
+
+`apps/web/public/packs.json`（1テーマ分を抜粋。全5テーマの値は §4 の表と
+`packages/audio-engine/src/automation.ts` を参照）:
 
 ```jsonc
 {
   "packs": [
     {
-      "id": "default_warm",
-      "name": "Warm",
+      "id": "default",
+      "name": "Kairos",
       "tuning": 440,
-      "ir": { "focus": "/ir/room_small.wav", "break": "/ir/hall_large.wav" },
-      "focus": {
-        "key": "A", "scale": "aeolian", "bpm": 66,
-        "layers": [
-          { "role": "pad",     "loopSeconds": 32,     "takes": ["/audio/focus/pad_a_01.ogg", "/audio/focus/pad_a_02.ogg", "/audio/focus/pad_a_03.ogg"] },
-          { "role": "texture", "loopSeconds": 20,     "mono": true, "takes": ["/audio/focus/pink_air.ogg", "/audio/focus/room_hum.ogg"] },
-          { "role": "pulse",   "loopSeconds": 7.2727, "takes": ["/audio/focus/pulse_66_01.ogg", "/audio/focus/pulse_66_02.ogg"] },
-          { "role": "cell",    "oneShots": ["/audio/focus/bell_a3.ogg", "/audio/focus/bell_c4.ogg", "/audio/focus/bell_e4.ogg", "/audio/focus/bell_g4.ogg"] }
-        ]
+      "themes": {
+        "study": {
+          "kind": "focus",
+          "key": "A", "scale": "aeolian", "bpm": 68,
+          "ir": "/ir/room_small.wav",
+          "layers": [
+            { "role": "pad",     "loopSeconds": 32,        "takes": ["/audio/study/pad_01.wav", "/audio/study/pad_02.wav", "/audio/study/pad_03.wav"] },
+            { "role": "texture", "loopSeconds": 20, "mono": true, "takes": ["/audio/study/texture_pink_a.wav", "/audio/study/texture_pink_b.wav"] },
+            { "role": "pulse",   "loopSeconds": 7.05882353, "takes": ["/audio/study/pulse_01.wav", "/audio/study/pulse_02.wav"] },
+            { "role": "cell",    "oneShots": ["/audio/study/cell_a3.wav", "/audio/study/cell_c4.wav", "/audio/study/cell_e4.wav", "/audio/study/cell_g4.wav"] }
+          ],
+          "automation": { "pad": [ /* keyframes */ ], "texture": [], "pulse": [], "cellDensity": [], "reverbWet": [], "lowPassHz": [], "breathLfoHz": 0, "breathDepth": 0 }
+        }
+        // work / move / relax / sleep も同じ形。§4 の表 + automation.ts が正。
       },
-      "break": {
-        "key": "D", "scale": "lydian", "bpm": null,
-        "layers": [
-          { "role": "pad",     "loopSeconds": 30, "takes": ["/audio/break/air_d_01.ogg", "/audio/break/air_d_02.ogg"] },
-          { "role": "texture", "loopSeconds": 24, "mono": true, "takes": ["/audio/break/rain_leaves.ogg", "/audio/break/waves.ogg"] },
-          { "role": "cell",    "oneShots": ["/audio/break/drop_d4.ogg", "/audio/break/drop_f4.ogg", "/audio/break/drop_a4.ogg"] }
-        ]
-      },
-      "cues": { "phaseEnd": "/audio/cues/soft_chime.ogg", "sessionEnd": "/audio/cues/resolve.ogg" }
+      "cues": { "phaseEnd": "/audio/cues/soft_chime.wav", "sessionEnd": "/audio/cues/resolve.wav" }
     }
   ]
 }
 ```
 
-> `pulse` の `loopSeconds` は BPM から算出する。66 BPM で8拍 = 8 × 60/66 = 7.2727秒。
+> `pulse` の `loopSeconds` は BPM から算出する。68 BPM で8拍 = 8 × 60/68 = 7.05882353秒。
 > **ループ長は必ず拍の整数倍にする。** 半端だと拍がずれていく。
+> `packages/audio-engine/src/pulse-loop.ts` の `isPulseLoopAligned` がこれをテストで保証する
+> （`packs.test.ts` が `packs.json` の全テーマを実際に検証する）。
 > `loopSeconds` は 32秒以下に抑える（メモリ制約、`03_ARCHITECTURE.md` ADR-003）。
 
 ---
 
-## 4. フェーズ・オートメーション（音の弧）
+## 4. テーマ別オートメーション（音の弧）
 
-Endel の Scenario と同じ「開始 / 中間 / 終了」の3フェーズを、
+Endel の Scenario と同じ「開始 / 中間 / 終了」の弧を、
 **正規化時間 `t ∈ [0,1]`** に対するキーフレーム曲線として定義します。
 `t` を使うため、25分でも50分でも同じ定義が機能します。
 
-### 4.1 Focus（集中）
+rev.3（`03_ARCHITECTURE.md` ADR-004）から、この弧は5つのテーマ（study/work/move/relax/sleep）
+それぞれが個別に持ちます。実装は `packages/audio-engine/src/automation.ts`
+（`studyAutomation` などのエクスポート）が正で、下表はその設計根拠の要約です。
+根拠文献は `docs/deep-research-report_chatGPT.md`（ChatGPT報告）と
+`集中力を高める音の文献調査_gemini.md`（Gemini報告）。
+
+### 4.1 Focus 系テーマ（Study / Work / Move）— 区間構造は共通
 
 | t | 区間名 | 意図 |
 |---|---|---|
-| 0.00 – 0.06 | **Ease-in** | 静かに立ち上がる。パルスは遅れて入る |
+| 0.00 – 0.06 | **Ease-in** | 静かに立ち上がる。パルスは遅れて入る（Move だけ短め・速め） |
 | 0.06 – 0.85 | **Sustain** | ほぼ変化しない。ここで音が動くと注意が奪われる |
 | 0.85 – 0.95 | **Taper** | Cell の密度を落とし、終わりが近いことを無意識に伝える |
 | 0.95 – 1.00 | **Wind-down** | パルスが消え、パッドだけが残る。t=0.98 で cue 音 |
 
-```ts
-export const focusAutomation: PhaseAutomation = {
-  pad:         [[0.00, 0.00], [0.06, 0.85], [0.85, 0.85], [0.95, 0.70], [1.00, 0.35]],
-  texture:     [[0.00, 0.25], [0.10, 0.40], [0.85, 0.40], [1.00, 0.30]],
-  pulse:       [[0.00, 0.00], [0.04, 0.00], [0.10, 0.55], [0.85, 0.55], [0.93, 0.30], [0.97, 0.00]],
-  cellDensity: [[0.00, 0.02], [0.12, 0.10], [0.80, 0.10], [0.90, 0.04], [1.00, 0.01]], // 毎秒の期待発火数
-  reverbWet:   [[0.00, 0.35], [0.10, 0.22], [0.90, 0.22], [1.00, 0.45]],
-  lowPassHz:   [[0.00, 1200], [0.08, 6000], [0.88, 6000], [1.00, 2200]],
-  breathLfoHz: 0,
-  breathDepth: 0,
-};
-```
+| 項目 | **Study** | **Work** | **Move** |
+|---|---|---|---|
+| Key / Scale | A Aeolian | A Dorian | E Major Pentatonic |
+| BPM | 68（安静時心拍に近い一定リズム） | 76（Studyよりやや速く覚醒度を上げる） | 112（運動的・明るいテンポ） |
+| Texture | ピンクノイズのみ（純粋なマスキング） | ピンクノイズ＋ハムのブレンド（「オフィス」の質感） | 高域寄りの軽いエア質感（マスキングより開放感） |
+| Pulse (Sustain) | 0.42（控えめ、一定） | 0.52（やや前に出る） | 0.68（強く推進力を出す） |
+| Cell 発火頻度 | 約11秒に1回 | 約7.7秒に1回 | 約4.5秒に1回（生気） |
+| Reverb (Sustain) | 0.20（小部屋、明瞭） | 0.16（タイトでドライ） | 0.10（さらにドライ、パンチを殺さない） |
+| Low-pass (Sustain) | 6000Hz | 7200Hz | 9500Hz（明るく開放的） |
+| 根拠 | ChatGPT報告「作業タイプ依存性」表: 集中学習は一定テンポ・歌詞なし・ピンクノイズ・音量中 | Gemini報告 §3.2: 単純作業はやや速いテンポで交感神経を軽く刺激 | 両報告: 明るいテンポの音楽が気分と覚醒度を高める（100–140BPM） |
 
-**設計根拠**（`01_ENDEL_RESEARCH.md` §4）
-- Endel は「一定のビートが長時間の集中を助ける」ことを生産性サウンドの基礎に据えている
-  → `pulse` を Sustain 区間で完全に一定に保つ
-- 「刺激的だが決して気を散らさない」→ Sustain 中の変化は ±2dB 以内。メロディックな展開を作らない
-- Cell の密度も低く（毎秒0.1 = 約10秒に1回）保つ。これは「何かが動いている」という最小限の
-  生気を与えるためであり、音楽的なフレーズを作るためではない
+**設計根拠（共通）**（`01_ENDEL_RESEARCH.md` §4 と ChatGPT/Gemini報告の合意点）
+- 「一定のビートが長時間の集中を助ける」→ `pulse` を Sustain 区間で完全に一定に保つ
+- 「刺激的だが決して気を散らさない」→ Sustain 中の変化は無し。メロディックな展開を作らない
+- Cell はスケール内の音だけを選ぶ（`CellScheduler`）ので、密度をどれだけ上げても不協和にならない
+- 歌詞・言語情報のある音は一切使わない（無関連発話効果 / ISE、Gemini報告 §3.1）
 
-### 4.2 Break（休憩）
+### 4.2 Break 系テーマ（Relax / Sleep）— 区間構造は共通
 
 | t | 区間名 | 意図 |
 |---|---|---|
-| 0.00 – 0.10 | **Release** | 緊張を解く。リバーブが一気に広がり、パルスは消えている |
-| 0.10 – 0.80 | **Rest** | 自然音が主役。密度は最小。ゆるやかな呼吸 |
-| 0.80 – 1.00 | **Re-engage** | わずかに明るさを戻し、次の集中への助走をつける。t=0.98 で cue 音 |
+| 0.00 – 0.12 / 0.15 | **Release** | 緊張を解く。リバーブが一気に広がり、パルスは無い |
+| 0.12 – 0.80 | **Rest** | 自然音・ノイズ色が主役。密度は最小。ゆるやかな呼吸 |
+| 0.80 – 1.00 | **Re-engage** | わずかに明るさを戻す。t=0.98 で cue 音 |
 
-```ts
-export const breakAutomation: PhaseAutomation = {
-  pad:         [[0.00, 0.55], [0.12, 0.90], [0.80, 0.90], [1.00, 0.45]],
-  texture:     [[0.00, 0.35], [0.15, 0.75], [0.80, 0.75], [1.00, 0.45]],
-  pulse:       [[0.00, 0.00], [0.90, 0.00], [1.00, 0.18]],  // 終盤にだけ僅かに戻す
-  cellDensity: [[0.00, 0.06], [0.20, 0.03], [0.85, 0.03], [1.00, 0.05]],
-  reverbWet:   [[0.00, 0.45], [0.15, 0.65], [0.85, 0.65], [1.00, 0.40]],
-  lowPassHz:   [[0.00, 3000], [0.15, 1800], [0.85, 1800], [1.00, 3500]],
-  breathLfoHz: 0.08,   // 音量をゆっくり呼吸させる
-  breathDepth: 0.12,
-};
-```
+| 項目 | **Relax**（shortBreak） | **Sleep**（longBreak） |
+|---|---|---|
+| Key / Scale | D Lydian（開放感） | D Aeolian・低い register（深さ） |
+| Texture | 雨・葉音／波（自然音、ソフトファシネーション） | ブラウンノイズ（過覚醒の鎮静、Gemini報告 §1.1） |
+| Reverb (Rest) | 0.65（大きなホール） | 0.75（さらに大きく暗い） |
+| Low-pass (Rest) | 1800Hz | 1000Hz（さらに暗く、高域刺激を避ける） |
+| 呼吸 LFO | 0.08Hz / depth 0.12（約12.5秒周期） | 0.045Hz / depth 0.16（約22秒周期、よりゆっくり） |
+| Pulse | 無し | 無し |
 
-**設計根拠**: Endel の Relax は「脳が処理しやすい単純な音構造」と「自然音」を使い、
-副交感神経の活性化を狙う → texture を主役にし、pad は背景に回す。
-拍を消すのは意図的で、休憩に拍があると身体が作業モードを維持してしまう。
+**設計根拠**: 自然音はストレスを軽減しソフトファシネーションを提供する（両報告）→ texture を
+主役にし、pad は背景に回す。拍を消すのは意図的で、休憩に拍があると身体が作業モードを
+維持してしまう。Sleep は Relax よりさらに低いローパス・大きなリバーブ・遅い呼吸にして
+覚醒度を最小まで落とす。
 
 ### 4.3 対照表（実装時のチェックリスト）
 
-| 要素 | Focus | Break |
-|---|---|---|
-| 拍 | あり（60–72 BPM、一定） | なし（終盤のみ僅かに） |
-| スケール | Aeolian / Dorian（落ち着き） | Lydian / Major pentatonic（開放感） |
-| リバーブ | 小さめの部屋のIR、wet 0.20–0.35 | 大きなホールのIR、wet 0.40–0.70 |
-| ローパス | 6kHz 前後 | 1.8kHz 前後 |
-| Texture | ピンクノイズ・空調のような無機質な音 | 雨・波・鳥といった自然音 |
-| Cell 発火頻度 | 約10秒に1回 | 約30秒に1回 |
-| 音量ダイナミクス | ほぼ一定（±2dB） | 呼吸するように（±4dB, 0.08Hz） |
-| 定位 | 中央寄り、安定 | 広く、ゆっくり移動 |
+| 要素 | Study | Work | Move | Relax | Sleep |
+|---|---|---|---|---|---|
+| 拍 | あり・一定 68bpm | あり・一定 76bpm | あり・一定 112bpm | なし | なし |
+| Noise color | ピンク | ピンク＋ハム | 軽いエア（ハイパス強め） | 自然音（雨/波） | ブラウン |
+| Reverb | 小部屋 0.20–0.28 | 小部屋 0.16–0.22 | ドライ 0.10–0.14 | ホール 0.45–0.65 | 深ホール 0.55–0.75 |
+| Low-pass | 6000Hz | 7200Hz | 9500Hz | 1800–3000Hz | 1000–1600Hz |
+| Cell 発火頻度 | 約11秒に1回 | 約7.7秒に1回 | 約4.5秒に1回 | 約20–30秒に1回 | 約50秒に1回 |
+| 呼吸 | 無し | 無し | 無し | 0.08Hz | 0.045Hz |
+| Pomodoro での役割 | Focus（選択可） | Focus（選択可・既定） | Focus（選択可） | shortBreak（固定） | longBreak（固定） |
 
 ---
 
@@ -203,7 +213,12 @@ export const breakAutomation: PhaseAutomation = {
 
 ```ts
 export type LayerRole = 'pad' | 'texture' | 'pulse' | 'cell' | 'cue';
-export type SessionPhase = 'focus' | 'shortBreak' | 'longBreak';
+
+/** UI の5テーマと1:1対応する識別子。SoundPack.themes のキーになる。 */
+export type ThemeId = 'study' | 'work' | 'move' | 'relax' | 'sleep';
+
+/** テーマがタイマーのどちらのフェーズに属するか（Focus 系 or Break 系）。 */
+export type ThemeKind = 'focus' | 'break';
 
 /** キーフレーム列。t は 0.0–1.0 の昇順。線形補間。 */
 export type Keyframes = ReadonlyArray<readonly [t: number, value: number]>;
@@ -222,19 +237,38 @@ export interface PhaseAutomation {
 /** 純粋関数。ユニットテストの主対象。 */
 export function valueAt(kf: Keyframes, t: number): number;
 
+/** 1テーマ分の音響定義。automation を内包するので、テーマごとに完全に独立して設計できる。 */
+export interface ThemeSoundDefinition {
+  readonly kind: ThemeKind;
+  readonly key: string;
+  readonly scale: string;
+  readonly bpm: number | null;
+  readonly ir: string;
+  readonly layers: readonly LayerSpec[];
+  readonly automation: PhaseAutomation;
+}
+
+export interface SoundPack {
+  readonly id: string;
+  readonly name: string;
+  readonly tuning: number;
+  readonly themes: Readonly<Record<ThemeId, ThemeSoundDefinition>>;
+  readonly cues: { readonly phaseEnd: string; readonly sessionEnd: string };
+}
+
 export interface SoundscapeEngine {
   /** ユーザー操作（Startボタン）を起点にのみ呼ぶこと。自動再生ポリシー対策。 */
   init(): Promise<void>;
   loadPack(pack: SoundPack): Promise<void>;
 
-  /** フェーズ開始。seed で音の展開を決定的にする。 */
-  begin(phase: SessionPhase, seed: number): Promise<void>;
+  /** テーマ再生開始。seed で音の展開を決定的にする。 */
+  begin(theme: ThemeId, seed: number): Promise<void>;
 
   /** useTimer から約10Hzで呼ばれる。t は 0.0–1.0。 */
   tick(t: number): void;
 
-  /** 次フェーズへ等パワークロスフェード。無音を挟まない。 */
-  transitionTo(next: SessionPhase, seed: number, crossfadeSec?: number): Promise<void>;
+  /** 次テーマへ等パワークロスフェード。無音を挟まない（フェーズ遷移にもテーマ変更にも使う）。 */
+  transitionTo(next: ThemeId, seed: number, crossfadeSec?: number): Promise<void>;
 
   pause(fadeOutSec?: number): Promise<void>;
   resume(fadeInSec?: number): Promise<void>;
@@ -246,6 +280,11 @@ export interface SoundscapeEngine {
   dispose(): Promise<void>;
 }
 ```
+
+> どのタイマーフェーズでどのテーマを鳴らすかは audio-engine の関知するところではない。
+> `apps/web/lib/soundscapeRuntime.ts` の `themeIdForTimerPhase()` が
+> `(タイマーの phase, 選択中の focusThemeId) → ThemeId` の対応を1箇所で決める
+> （focus → 選択中のテーマ、shortBreak → relax 固定、longBreak → sleep 固定）。
 
 ---
 
@@ -380,8 +419,9 @@ export class CellScheduler {
    - ループ長を拍の整数倍にトリミング
    - 先頭・末尾の DC オフセットとクリックを除去
    - ラウドネスを **−20 LUFS 前後**に統一（層を重ねる前提なので個々は小さめに）
-3. **OGG Vorbis（q6）** で書き出し、`apps/web/public/audio/` 配下へ
-4. `packs.json` に登録
+3. **OGG Vorbis（q6）** で書き出し、`apps/web/public/audio/<themeId>/` 配下へ
+   （例: `apps/web/public/audio/study/pad_01.ogg`。テーマIDは `study`/`work`/`move`/`relax`/`sleep`）
+4. `packs.json` の該当テーマに登録
 5. ライセンス情報を `docs/ASSET_LICENSES.md` に記録
 
 > MP3 はエンコーダのパディングでループにギャップが入るため使わないこと。
@@ -390,25 +430,42 @@ export class CellScheduler {
 
 ### 7.2 プロンプト例
 
-**Focus / Pad**
-> minimal ambient pad, sustained warm analog synthesizer, A minor drone, slow evolving texture, no melody, no percussion, no vocals, calm and unobtrusive, seamless loop, 32 seconds
+テーマごとの key/scale/bpm/noise color は §4 の表を参照。以下はその値を反映した例。
 
-**Focus / Pulse**
-> soft minimal electronic pulse, 66 BPM, muted kick and closed hi-hat only, very low intensity, no melody, no bass line, steady and hypnotic, seamless loop
+**Study / Pad**
+> minimal ambient pad, sustained warm analog synthesizer, A minor (aeolian) drone, slow evolving texture, no melody, no percussion, no vocals, calm and unobtrusive, seamless loop, 32 seconds
 
-**Focus / Texture**
-> subtle pink noise bed with faint room tone, no music, no melody, constant level, seamless loop
+**Study / Pulse**
+> soft minimal electronic pulse, 68 BPM, muted low kick only, very low intensity, no melody, no bass line, steady and hypnotic, seamless loop
 
-**Focus / Cell（ワンショット）**
-> single soft bell tone, A3, gentle mallet attack, long natural decay, isolated single note
+**Study / Texture**
+> subtle pink noise bed, no music, no melody, constant level, seamless loop
 
-**Break / Pad**
+**Work / Texture**
+> pink noise blended with faint office room hum, no music, no melody, constant level, seamless loop
+
+**Move / Pad**
+> bright ambient pad, E major pentatonic, energetic but not busy, no percussion, no melody, seamless loop, 24 seconds
+
+**Move / Pulse**
+> bright rhythmic pulse, 112 BPM, crisp percussive tick with short noise transient, no melody, no bass line, driving and energetic, seamless loop
+
+**Move / Cell（ワンショット）**
+> single bright pluck / mallet tone, E4, quick decay, isolated single note
+
+**Relax / Pad**
 > spacious ambient pad, D lydian, airy and bright, wide stereo, very slow movement, no percussion, no melody, seamless loop, 30 seconds
 
-**Break / Texture**
+**Relax / Texture**
 > gentle rain on leaves with distant birds, natural field recording style, no music, calm, seamless loop
 
-**Cue**
+**Sleep / Pad**
+> very slow deep ambient pad, D minor (aeolian), low register, extremely subtle movement, no percussion, no melody, seamless loop, 30 seconds
+
+**Sleep / Texture**
+> deep brown noise, no high frequencies, no music, calm and enveloping, seamless loop
+
+**Cue（全テーマ共通）**
 > single soft chime, warm and clear, gentle attack, medium decay, isolated
 
 ### 7.3 インパルス応答（リバーブ）
@@ -416,8 +473,10 @@ export class CellScheduler {
 `ConvolverNode` に実測IRを食わせられるのは Web の隠れた強みです。
 アルゴリズミックリバーブと違い、本物の空間の残響がそのまま使えます。
 
-- Focus には**小さめの部屋**のIR（近く、明瞭）
-- Break には**大きなホール**や教会のIR（遠く、広い）
+- Study / Work には**小さめの部屋**のIR（近く、明瞭）— `room_small`
+- Move には**タイトでドライな**IR（推進力を殺さない）— `room_dry`
+- Relax には**大きなホール**や教会のIR（遠く、広い）— `hall_large`
+- Sleep には Relax よりさらに長く暗いIR（低域寄り）— `hall_deep`
 - OpenAIR などの公開IRライブラリが利用できるが、**ライセンスを必ず確認**して
   `ASSET_LICENSES.md` に記録すること
 - IR はモノラルでも十分。長さ2〜4秒程度で足りる
@@ -437,7 +496,7 @@ export class CellScheduler {
 |---|---|
 | `valueAt` | 純粋関数の単体テスト。境界（t=0, 1）とキーフレーム間の補間値 |
 | `CellScheduler` | 同一シードで同一系列が出ること、密度を上げると発火数が期待通り増えることを統計的に検証 |
-| ループ長 | 全 pulse 素材について `loopSeconds × bpm / 60` が整数であることをテストで保証 |
+| ループ長 | `pulse-loop.ts` の `isPulseLoopAligned` が純粋関数として保証し、`packs.test.ts` が `packs.json` の全テーマで実際に `loopSeconds × bpm / 60` が整数であることを検証する |
 | **クロスフェード** | `OfflineAudioContext` で移行区間をレンダリングし、**RMS が ±1.5dB 以内**に収まることを検証。谷ができていれば失敗 |
 | **クリッピング** | レンダリング結果に \|sample\| > 1.0 のサンプルが無いことを検証 |
 | WorkerTicker | フェイクタイマーで、2秒先までのイベントが常に予約済みであることを検証 |

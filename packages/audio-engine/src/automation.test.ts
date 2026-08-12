@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { focusAutomation, valueAt } from "./automation";
+import { studyAutomation, valueAt } from "./automation";
 import type { Keyframes } from "./types";
 
 describe("valueAt", () => {
@@ -29,10 +29,10 @@ describe("valueAt", () => {
     expect(valueAt([], 0.5)).toBe(0);
   });
 
-  it("focusAutomation pulse is exactly flat (±0) through the sustain window", () => {
+  it("studyAutomation pulse is exactly flat through the sustain window", () => {
     // docs/04_SOUND_ENGINE.md §4.1: Sustain 区間 (0.10–0.85) は完全に一定
-    expect(valueAt(focusAutomation.pulse, 0.1)).toBeCloseTo(0.55, 10);
-    expect(valueAt(focusAutomation.pulse, 0.5)).toBeCloseTo(0.55, 10);
-    expect(valueAt(focusAutomation.pulse, 0.85)).toBeCloseTo(0.55, 10);
+    expect(valueAt(studyAutomation.pulse, 0.1)).toBeCloseTo(0.42, 10);
+    expect(valueAt(studyAutomation.pulse, 0.5)).toBeCloseTo(0.42, 10);
+    expect(valueAt(studyAutomation.pulse, 0.85)).toBeCloseTo(0.42, 10);
   });
 });

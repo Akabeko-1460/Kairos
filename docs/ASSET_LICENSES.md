@@ -7,9 +7,9 @@ docs/CLAUDE.md の禁止事項: 「ライセンスを確認していない音源
 
 | ファイル | 種別 | 出所 | ライセンス | 備考 |
 |---|---|---|---|---|
-| `apps/web/public/audio/**/*.wav` | 全て | `scripts/generate-placeholder-audio.mjs` による**コード生成の合成音**（サイン波・ホワイト/ピンクノイズ） | 権利者なし（このリポジトリのスクリプトが生成した一次データ） | **Phase 0/1 の開発・検証専用のプレースホルダー。** 本番公開前に docs/04_SOUND_ENGINE.md §7 の手順でAI生成素材に差し替えること |
-| `apps/web/public/ir/*.wav` | インパルス応答 | 同上（減衰ホワイトノイズによる合成IR） | 権利者なし | 同上。本番は実測IR or 権利確認済みの公開IRライブラリに差し替える |
-| `apps/web/public/audio/cues/*.wav` | Cue | 同上 | 権利者なし | 同上 |
+| `apps/web/public/audio/{study,work,move,relax,sleep}/**/*.wav` | 全て | `scripts/generate-placeholder-audio.mjs` による**コード生成の合成音**（サイン波・ホワイト/ピンク/ブラウンノイズ） | 権利者なし（このリポジトリのスクリプトが生成した一次データ） | **開発・検証専用のプレースホルダー。** rev.3 でテーマ単位（`docs/03_ARCHITECTURE.md` ADR-004）に再構築。本番公開前に docs/04_SOUND_ENGINE.md §7 の手順でAI生成素材に差し替えること |
+| `apps/web/public/ir/*.wav` | インパルス応答 | 同上（減衰ホワイトノイズによる合成IR。`room_small`/`room_dry`/`hall_large`/`hall_deep` の4種） | 権利者なし | 同上。本番は実測IR or 権利確認済みの公開IRライブラリに差し替える |
+| `apps/web/public/audio/cues/*.wav` | Cue（全テーマ共通） | 同上 | 権利者なし | 同上 |
 
 ## 本番差し替え時のチェックリスト（docs/CLAUDE.md 禁止事項より）
 

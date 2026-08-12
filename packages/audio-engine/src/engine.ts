@@ -1,9 +1,8 @@
-import { automationFor } from "./automation";
 import { BufferLoader } from "./buffer-loader";
 import { equalPowerCurve } from "./equal-power";
 import { createCompressorLimiter, type Limiter } from "./limiter";
 import { PhaseGraph } from "./phase-graph";
-import { soundDefinitionKeyFor, type EnginePhase, type LayerRole, type SoundPack } from "./types";
+import type { LayerRole, SoundPack, ThemeId } from "./types";
 import { IntervalTicker, WorkerTicker, type Ticker } from "./worker-ticker";
 
 /** 常に2〜3秒先までイベントを予約しておく（docs/04_SOUND_ENGINE.md §6.1）。 */
@@ -32,7 +31,7 @@ export class SoundscapeEngine {
   private pack: SoundPack | null = null;
   private currentGraph: PhaseGraph | null = null;
   private outgoingGraph: PhaseGraph | null = null;
-  private currentPhase: EnginePhase | null = null;
+  private currentTheme: ThemeId | null = null;
   private lastT = 0;
   private disposeOutgoingTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -73,20 +72,20 @@ export class SoundscapeEngine {
     this.pack = pack;
   }
 
-  /** フェーズ開始。seed で音の展開を決定的にする。前のフェーズが無い最初の1回のみ使う想定。 */
-  async begin(phase: EnginePhase, seed: number): Promise<void> {
+  /** テーマ再生開始。seed で音の展開を決定的にする。前のテーマが無い最初の1回のみ使う想定。 */
+  async begin(theme: ThemeId, seed: number): Promise<void> {
     this.assertReady();
 
     if (this.currentGraph) {
       // 想定外の呼び出し順（例: Home のフリー再生中に Pomodoro を Start した等）でも
       // 無音を挟まず・古いグラフをリークさせずに済むよう、クロスフェードへ委譲する。
-      await this.transitionTo(phase, seed, 3);
+      await this.transitionTo(theme, seed, 3);
       return;
     }
 
-    const graph = await this.buildGraph(phase, seed);
+    const graph = await this.buildGraph(theme, seed);
     this.currentGraph = graph;
-    this.currentPhase = phase;
+    this.currentTheme = theme;
     this.lastT = 0;
 
     const now = this.ctx!.currentTime;
@@ -105,10 +104,10 @@ export class SoundscapeEngine {
     this.currentGraph.tick(t, this.ctx.currentTime);
   }
 
-  /** 次フェーズへ等パワークロスフェード。無音を挟まない。 */
-  async transitionTo(next: EnginePhase, seed: number, crossfadeSec = DEFAULT_CROSSFADE_SEC): Promise<void> {
+  /** 次テーマへ等パワークロスフェード。無音を挟まない。テーマ変更（例: Study→Work）にも使う。 */
+  async transitionTo(next: ThemeId, seed: number, crossfadeSec = DEFAULT_CROSSFADE_SEC): Promise<void> {
     this.assertReady();
-    if (!this.currentGraph || !this.currentPhase) {
+    if (!this.currentGraph || !this.currentTheme) {
       await this.begin(next, seed);
       return;
     }
@@ -124,7 +123,7 @@ export class SoundscapeEngine {
     this.outgoingGraph?.dispose(); // 前回の後片付けが終わっていなければ念のため即時破棄
     this.outgoingGraph = outgoing;
     this.currentGraph = newGraph;
-    this.currentPhase = next;
+    this.currentTheme = next;
     this.lastT = 0;
 
     if (this.disposeOutgoingTimer) clearTimeout(this.disposeOutgoingTimer);
@@ -172,7 +171,7 @@ export class SoundscapeEngine {
     );
     this.currentGraph = null;
     this.outgoingGraph = null;
-    this.currentPhase = null;
+    this.currentTheme = null;
 
     setTimeout(() => {
       for (const g of graphsToDispose) g.dispose();
@@ -201,14 +200,14 @@ export class SoundscapeEngine {
     contextTime: number;
     contextState: string;
     nextCellEventTime: number | null;
-    currentPhase: EnginePhase | null;
+    currentTheme: ThemeId | null;
   } | null {
     if (!this.ctx) return null;
     return {
       contextTime: this.ctx.currentTime,
       contextState: "state" in this.ctx ? (this.ctx as AudioContext).state : "offline",
       nextCellEventTime: this.currentGraph?.cellScheduler.nextEventTime ?? null,
-      currentPhase: this.currentPhase,
+      currentTheme: this.currentTheme,
     };
   }
 
@@ -241,18 +240,17 @@ export class SoundscapeEngine {
     }
   }
 
-  private async buildGraph(phase: EnginePhase, seed: number): Promise<PhaseGraph> {
+  private async buildGraph(theme: ThemeId, seed: number): Promise<PhaseGraph> {
     const pack = this.pack!;
     const ctx = this.ctx!;
-    const defKey = soundDefinitionKeyFor(phase);
-    const phaseDef = defKey === "focus" ? pack.focus : pack.break;
-    const irUrl = defKey === "focus" ? pack.ir.focus : pack.ir.break;
+    const themeDef = pack.themes[theme];
+    if (!themeDef) {
+      throw new Error(`SoundPack "${pack.id}" has no definition for theme "${theme}".`);
+    }
     return PhaseGraph.create({
       ctx,
       bufferLoader: this.bufferLoader!,
-      phaseDef,
-      automation: automationFor(phase),
-      irUrl,
+      themeDef,
       seed,
       startAt: ctx.currentTime,
       output: this.masterGain!,

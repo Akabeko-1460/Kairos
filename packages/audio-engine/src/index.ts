@@ -7,6 +7,7 @@ export * from "./equal-power";
 export * from "./limiter";
 export { PhaseGraph } from "./phase-graph";
 export * from "./prng";
+export * from "./pulse-loop";
 export * from "./scales";
 export * from "./types";
 export * from "./worker-ticker";

@@ -126,7 +126,8 @@ export default function PomodoroPage() {
   const setTaskHeadline = useTimerStore((s) => s.setTaskHeadline);
   const changePreset = useTimerStore((s) => s.changePreset);
 
-  const { ensureEngine, engineReady, masterVolume, setMasterVolume } = useSoundscape();
+  const { ensureEngine, engineReady, masterVolume, setMasterVolume, focusThemeId, setFocusThemeId } =
+    useSoundscape();
   const taskItems = useTaskListStore((s) => s.items);
   const addTaskItem = useTaskListStore((s) => s.addItem);
   const removeTaskItem = useTaskListStore((s) => s.removeItem);
@@ -134,8 +135,6 @@ export default function PomodoroPage() {
   const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
   const now = useNow();
   const [starting, setStarting] = useState(false);
-  // Focus フェーズで鳴らす/描くサウンドテーマ。デフォルトは汎用的な "Work"。
-  const [focusThemeId, setFocusThemeId] = useState<string>("work");
 
   const isIdle = state.phase === "idle" || state.phase === "completed";
   const isBreakPhase = state.phase === "shortBreak" || state.phase === "longBreak";

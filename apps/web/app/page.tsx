@@ -17,7 +17,7 @@ function pick<T>(arr: readonly T[]): T {
 
 export default function HomePage() {
   const {
-    freeplayCategoryId,
+    freeplayThemeId,
     freeplayPlaying,
     ensureEngine,
     playFreeplay,
@@ -30,7 +30,7 @@ export default function HomePage() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [subtitle, setSubtitle] = useState("");
 
-  const selected = useMemo(() => SOUNDS.find((s) => s.id === freeplayCategoryId) ?? null, [freeplayCategoryId]);
+  const selected = useMemo(() => SOUNDS.find((s) => s.id === freeplayThemeId) ?? null, [freeplayThemeId]);
 
   // 画面全体（ヘッダーも含む）で共有する背景アートに、このページの状態を反映する。
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function HomePage() {
   }, [selected, freeplayPlaying, setBackgroundArt]);
 
   const handleSelect = async (entry: SoundTheme) => {
-    if (freeplayCategoryId === entry.id) {
+    if (freeplayThemeId === entry.id) {
       // 同じ音をもう一度選んだら一時停止/再開のトグルにする
       toggleFreeplayPause();
       return;
@@ -53,7 +53,7 @@ export default function HomePage() {
     try {
       await ensureEngine();
       setSubtitle(pick(entry.subtitles));
-      await playFreeplay(entry.id, entry.phase);
+      await playFreeplay(entry.id);
     } finally {
       setLoadingId(null);
     }
@@ -82,7 +82,7 @@ export default function HomePage() {
 
       <div className="mb-10 flex max-w-2xl flex-wrap items-center justify-center gap-5">
         {SOUNDS.map((entry) => {
-          const active = freeplayCategoryId === entry.id;
+          const active = freeplayThemeId === entry.id;
           return (
             <div key={entry.id} className="flex flex-col items-center gap-2">
               <motion.button

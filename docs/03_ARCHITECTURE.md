@@ -113,6 +113,65 @@ Tone.js は `AudioWorklet` に依存しており移植できない。
 
 ---
 
+## ADR-004: サウンドを「フェーズ(focus/break)」単位から「テーマ(5種)」単位で再構築する
+
+### 決定
+音響定義の最小単位を `EnginePhase`（focus/shortBreak/longBreak）から `ThemeId`
+（`study` / `work` / `move` / `relax` / `sleep`）に変更した。`SoundPack` は
+`{ focus, break }` の2定義ではなく `themes: Record<ThemeId, ThemeSoundDefinition>` の
+5定義を持つ。各 `ThemeSoundDefinition` が key/scale/bpm/layers に加えて **自分専用の
+`PhaseAutomation` を内包する**（旧: `automation.ts` にフェーズ単位でハードコードされていた）。
+
+Pomodoro の Break フェーズはユーザーが選べないため固定でテーマを割り当てる:
+`shortBreak → relax`、`longBreak → sleep`（短い休憩は素早いリセット、長い休憩はより深く
+鎮める、という意図的な差別化）。
+
+### 理由
+rev.2 までは Home 画面に Study/Work/Relax/Sleep/Move の5カテゴリが並んでいたが、実体は
+`packs.json` の `focus`/`break` 定義2つしか無く、**カテゴリの違いは背景アートの配色だけ**で
+音は完全に同一だった（Pomodoro の Focus テーマ選択も同様に音へ反映されていなかった）。
+これは「テーマに合わせてすべてのサウンドを再構築する」という要求と両立しない。
+
+`docs/deep-research-report_chatGPT.md` と `集中力を高める音の文献調査_gemini.md` の
+文献調査により、テーマごとに以下が異なるべきだという根拠が得られた（詳細な数値と出典は
+`04_SOUND_ENGINE.md` §4 参照）:
+
+- **ノイズ色**: ピンクノイズ(Study/Work)・ブラウンノイズ(Sleep)・軽い高域寄りのエア質感(Move)は
+  それぞれ効果の方向性が違う（Gemini報告 §1.1）
+- **テンポ**: 安静時心拍に近い一定テンポ(Study 68bpm)、やや速いテンポ(Work 76bpm)、
+  運動的な速いテンポ(Move 112bpm)は覚醒度への影響が異なる（Gemini報告 §3.2、ChatGPT報告
+  「リズム・テンポの影響」）
+- **音量ダイナミクス／リバーブ**: 集中系は小さく明瞭な空間、休憩系は大きく開放的な空間
+  （ChatGPT報告「音量・SNRの影響」）
+
+これらはフェーズ単位のグローバルな自動化カーブでは表現できず、テーマ単位で完全に独立した
+定義が必要だった。
+
+### 影響
+- `packages/audio-engine`: `EnginePhase`/`soundDefinitionKeyFor` を削除し `ThemeId`/`ThemeKind`
+  を導入。`SoundscapeEngine.begin/transitionTo` は `phase` ではなく `theme` を受け取る
+- `automation.ts` は `focusAutomation`/`breakAutomation` の2定義から
+  `studyAutomation`/`workAutomation`/`moveAutomation`/`relaxAutomation`/`sleepAutomation`
+  の5定義に変わった
+- `apps/web/public/packs.json` は `focus`/`break` キーではなく `themes.study` などの
+  5キーを持つ。各テーマが `automation` フィールドを内包する（データ駆動）
+- `apps/web/lib/soundscapeRuntime.ts`: タイマーのフェーズと選択中の Focus テーマから
+  再生すべき `ThemeId` を1つに決める純粋関数 `themeIdForTimerPhase` を追加。Focus 中に
+  ユーザーがテーマを変更した場合も、この関数の戻り値が変わることを検知してクロスフェードする
+- 既存の `focus`/`break` の2音源体系は廃止（"全テーマは同一キー/スケールに揃える" という
+  制約は **テーマ内部**の話であり、テーマ間で key/scale/bpm が異なることは元々の設計
+  （旧 focus=A、break=D）を踏襲している）
+
+### 却下した代替案
+- **バイノーラルビート層の追加**: 両報告とも効果を報告する一方、個人差が大きく固定音源では
+  効果が不安定という指摘（Gemini報告 §2.3）があり、ヘッドフォン前提という制約も強い。
+  今回はテーマの識別子を増やす基盤を作ることを優先し、バイノーラルビートは見送った
+  （将来 Study テーマ限定のオプションとして再検討可能）
+- **70dB付近の動的な環境ノイズによる創造性ブースト**（Gemini報告 §5, Mehta 2012）:
+  非線形で環境依存性が強く、固定音量のBGMとして持ち込むと逆効果になりうるため見送った
+
+---
+
 ## 併用する Web API
 
 | API | 用途 | Phase |

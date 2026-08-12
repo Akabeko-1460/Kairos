@@ -3,7 +3,7 @@ import { BufferLoader } from "./buffer-loader";
 import { CellScheduler } from "./cell-scheduler";
 import { mulberry32 } from "./prng";
 import { scaleSemitones } from "./scales";
-import type { LayerSpec, PhaseAutomation, PhaseSoundDefinition } from "./types";
+import type { LayerSpec, PhaseAutomation, ThemeSoundDefinition } from "./types";
 
 const LOOP_CROSSFADE_TAIL_SEC = 0; // Phase 2 で LoopManager のテイクローテーションと合わせて拡張する
 const DETUNE_RANGE = 0.006; // ±0.3%
@@ -78,32 +78,30 @@ export class PhaseGraph {
   static async create(params: {
     ctx: BaseAudioContext;
     bufferLoader: BufferLoader;
-    phaseDef: PhaseSoundDefinition;
-    automation: PhaseAutomation;
-    irUrl: string;
+    themeDef: ThemeSoundDefinition;
     seed: number;
     startAt: number;
     output: AudioNode;
   }): Promise<PhaseGraph> {
     const rngForTakes = mulberry32(params.seed);
-    const cellSpec = params.phaseDef.layers.find((l) => l.role === "cell");
+    const cellSpec = params.themeDef.layers.find((l) => l.role === "cell");
     const [irBuffer, cellBuffers] = await Promise.all([
-      params.bufferLoader.load(params.irUrl),
+      params.bufferLoader.load(params.themeDef.ir),
       cellSpec?.oneShots ? params.bufferLoader.loadAll(cellSpec.oneShots) : Promise.resolve([]),
     ]);
 
     const graph = new PhaseGraph({
       ctx: params.ctx,
-      automation: params.automation,
+      automation: params.themeDef.automation,
       cellBuffers,
-      scaleName: params.phaseDef.scale,
+      scaleName: params.themeDef.scale,
       seed: params.seed,
       startAt: params.startAt,
     });
     graph.convolver.buffer = irBuffer;
     graph.phaseMasterGain.connect(params.output);
 
-    for (const layer of params.phaseDef.layers) {
+    for (const layer of params.themeDef.layers) {
       if (layer.role === "cell" || layer.role === "cue") continue; // ワンショット系はループ層と別扱い
       if (!layer.takes || layer.takes.length === 0) continue;
       const takeUrl = layer.takes[Math.floor(rngForTakes() * layer.takes.length)]!;

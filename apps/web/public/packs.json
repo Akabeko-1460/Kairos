@@ -1,63 +1,219 @@
 {
   "packs": [
     {
-      "id": "default_warm",
-      "name": "Warm (Placeholder)",
+      "id": "default",
+      "name": "Kairos",
       "tuning": 440,
-      "ir": { "focus": "/ir/room_small.wav", "break": "/ir/hall_large.wav" },
-      "focus": {
-        "key": "A",
-        "scale": "aeolian",
-        "bpm": 66,
-        "layers": [
-          {
-            "role": "pad",
-            "loopSeconds": 32,
-            "takes": ["/audio/focus/pad_a_01.wav", "/audio/focus/pad_a_02.wav", "/audio/focus/pad_a_03.wav"]
-          },
-          {
-            "role": "texture",
-            "loopSeconds": 20,
-            "mono": true,
-            "takes": ["/audio/focus/pink_air.wav", "/audio/focus/room_hum.wav"]
-          },
-          {
-            "role": "pulse",
-            "loopSeconds": 7.2727,
-            "takes": ["/audio/focus/pulse_66_01.wav", "/audio/focus/pulse_66_02.wav"]
-          },
-          {
-            "role": "cell",
-            "oneShots": [
-              "/audio/focus/bell_a3.wav",
-              "/audio/focus/bell_c4.wav",
-              "/audio/focus/bell_e4.wav",
-              "/audio/focus/bell_g4.wav"
-            ]
+      "themes": {
+        "study": {
+          "kind": "focus",
+          "key": "A",
+          "scale": "aeolian",
+          "bpm": 68,
+          "ir": "/ir/room_small.wav",
+          "layers": [
+            {
+              "role": "pad",
+              "loopSeconds": 32,
+              "takes": ["/audio/study/pad_01.wav", "/audio/study/pad_02.wav", "/audio/study/pad_03.wav"]
+            },
+            {
+              "role": "texture",
+              "loopSeconds": 20,
+              "mono": true,
+              "takes": ["/audio/study/texture_pink_a.wav", "/audio/study/texture_pink_b.wav"]
+            },
+            {
+              "role": "pulse",
+              "loopSeconds": 7.05882353,
+              "takes": ["/audio/study/pulse_01.wav", "/audio/study/pulse_02.wav"]
+            },
+            {
+              "role": "cell",
+              "oneShots": [
+                "/audio/study/cell_a3.wav",
+                "/audio/study/cell_c4.wav",
+                "/audio/study/cell_e4.wav",
+                "/audio/study/cell_g4.wav"
+              ]
+            }
+          ],
+          "automation": {
+            "pad": [[0.0, 0.0], [0.06, 0.8], [0.85, 0.8], [0.95, 0.65], [1.0, 0.3]],
+            "texture": [[0.0, 0.3], [0.1, 0.42], [0.85, 0.42], [1.0, 0.32]],
+            "pulse": [[0.0, 0.0], [0.04, 0.0], [0.1, 0.42], [0.85, 0.42], [0.93, 0.22], [0.97, 0.0]],
+            "cellDensity": [[0.0, 0.015], [0.12, 0.09], [0.8, 0.09], [0.9, 0.035], [1.0, 0.01]],
+            "reverbWet": [[0.0, 0.28], [0.1, 0.2], [0.9, 0.2], [1.0, 0.38]],
+            "lowPassHz": [[0.0, 1100], [0.08, 6000], [0.88, 6000], [1.0, 2000]],
+            "breathLfoHz": 0,
+            "breathDepth": 0
           }
-        ]
-      },
-      "break": {
-        "key": "D",
-        "scale": "lydian",
-        "bpm": null,
-        "layers": [
-          {
-            "role": "pad",
-            "loopSeconds": 30,
-            "takes": ["/audio/break/air_d_01.wav", "/audio/break/air_d_02.wav"]
-          },
-          {
-            "role": "texture",
-            "loopSeconds": 24,
-            "mono": true,
-            "takes": ["/audio/break/rain_leaves.wav", "/audio/break/waves.wav"]
-          },
-          {
-            "role": "cell",
-            "oneShots": ["/audio/break/drop_d4.wav", "/audio/break/drop_f4.wav", "/audio/break/drop_a4.wav"]
+        },
+        "work": {
+          "kind": "focus",
+          "key": "A",
+          "scale": "dorian",
+          "bpm": 76,
+          "ir": "/ir/room_small.wav",
+          "layers": [
+            {
+              "role": "pad",
+              "loopSeconds": 30,
+              "takes": ["/audio/work/pad_01.wav", "/audio/work/pad_02.wav", "/audio/work/pad_03.wav"]
+            },
+            {
+              "role": "texture",
+              "loopSeconds": 20,
+              "mono": true,
+              "takes": ["/audio/work/texture_pink.wav", "/audio/work/texture_hum.wav"]
+            },
+            {
+              "role": "pulse",
+              "loopSeconds": 6.31578947,
+              "takes": ["/audio/work/pulse_01.wav", "/audio/work/pulse_02.wav"]
+            },
+            {
+              "role": "cell",
+              "oneShots": [
+                "/audio/work/cell_a3.wav",
+                "/audio/work/cell_b3.wav",
+                "/audio/work/cell_c4.wav",
+                "/audio/work/cell_e4.wav"
+              ]
+            }
+          ],
+          "automation": {
+            "pad": [[0.0, 0.0], [0.06, 0.85], [0.85, 0.85], [0.95, 0.7], [1.0, 0.35]],
+            "texture": [[0.0, 0.28], [0.1, 0.45], [0.85, 0.45], [1.0, 0.34]],
+            "pulse": [[0.0, 0.0], [0.04, 0.0], [0.1, 0.52], [0.85, 0.52], [0.93, 0.28], [0.97, 0.0]],
+            "cellDensity": [[0.0, 0.02], [0.12, 0.13], [0.8, 0.13], [0.9, 0.05], [1.0, 0.015]],
+            "reverbWet": [[0.0, 0.22], [0.1, 0.16], [0.9, 0.16], [1.0, 0.32]],
+            "lowPassHz": [[0.0, 1300], [0.08, 7200], [0.88, 7200], [1.0, 2400]],
+            "breathLfoHz": 0,
+            "breathDepth": 0
           }
-        ]
+        },
+        "move": {
+          "kind": "focus",
+          "key": "E",
+          "scale": "majorPentatonic",
+          "bpm": 112,
+          "ir": "/ir/room_dry.wav",
+          "layers": [
+            {
+              "role": "pad",
+              "loopSeconds": 24,
+              "takes": ["/audio/move/pad_01.wav", "/audio/move/pad_02.wav"]
+            },
+            {
+              "role": "texture",
+              "loopSeconds": 16,
+              "mono": true,
+              "takes": ["/audio/move/texture_air_a.wav", "/audio/move/texture_air_b.wav"]
+            },
+            {
+              "role": "pulse",
+              "loopSeconds": 8.57142857,
+              "takes": ["/audio/move/pulse_01.wav", "/audio/move/pulse_02.wav"]
+            },
+            {
+              "role": "cell",
+              "oneShots": [
+                "/audio/move/cell_e4.wav",
+                "/audio/move/cell_gs4.wav",
+                "/audio/move/cell_b4.wav",
+                "/audio/move/cell_cs5.wav"
+              ]
+            }
+          ],
+          "automation": {
+            "pad": [[0.0, 0.15], [0.05, 0.75], [0.85, 0.75], [0.95, 0.6], [1.0, 0.3]],
+            "texture": [[0.0, 0.18], [0.08, 0.28], [0.85, 0.28], [1.0, 0.2]],
+            "pulse": [[0.0, 0.0], [0.03, 0.0], [0.08, 0.68], [0.85, 0.68], [0.92, 0.4], [0.97, 0.0]],
+            "cellDensity": [[0.0, 0.05], [0.1, 0.22], [0.8, 0.22], [0.9, 0.08], [1.0, 0.02]],
+            "reverbWet": [[0.0, 0.14], [0.08, 0.1], [0.9, 0.1], [1.0, 0.24]],
+            "lowPassHz": [[0.0, 4000], [0.08, 9500], [0.88, 9500], [1.0, 5000]],
+            "breathLfoHz": 0,
+            "breathDepth": 0
+          }
+        },
+        "relax": {
+          "kind": "break",
+          "key": "D",
+          "scale": "lydian",
+          "bpm": null,
+          "ir": "/ir/hall_large.wav",
+          "layers": [
+            {
+              "role": "pad",
+              "loopSeconds": 30,
+              "takes": ["/audio/relax/pad_01.wav", "/audio/relax/pad_02.wav"]
+            },
+            {
+              "role": "texture",
+              "loopSeconds": 24,
+              "mono": true,
+              "takes": ["/audio/relax/texture_rain.wav", "/audio/relax/texture_waves.wav"]
+            },
+            {
+              "role": "cell",
+              "oneShots": [
+                "/audio/relax/cell_d4.wav",
+                "/audio/relax/cell_fs4.wav",
+                "/audio/relax/cell_a4.wav",
+                "/audio/relax/cell_cs5.wav"
+              ]
+            }
+          ],
+          "automation": {
+            "pad": [[0.0, 0.55], [0.12, 0.9], [0.8, 0.9], [1.0, 0.45]],
+            "texture": [[0.0, 0.35], [0.15, 0.75], [0.8, 0.75], [1.0, 0.45]],
+            "pulse": [[0.0, 0.0], [1.0, 0.0]],
+            "cellDensity": [[0.0, 0.06], [0.2, 0.03], [0.85, 0.03], [1.0, 0.05]],
+            "reverbWet": [[0.0, 0.45], [0.15, 0.65], [0.85, 0.65], [1.0, 0.4]],
+            "lowPassHz": [[0.0, 3000], [0.15, 1800], [0.85, 1800], [1.0, 3500]],
+            "breathLfoHz": 0.08,
+            "breathDepth": 0.12
+          }
+        },
+        "sleep": {
+          "kind": "break",
+          "key": "D",
+          "scale": "aeolian",
+          "bpm": null,
+          "ir": "/ir/hall_deep.wav",
+          "layers": [
+            {
+              "role": "pad",
+              "loopSeconds": 30,
+              "takes": ["/audio/sleep/pad_01.wav", "/audio/sleep/pad_02.wav"]
+            },
+            {
+              "role": "texture",
+              "loopSeconds": 24,
+              "mono": true,
+              "takes": ["/audio/sleep/texture_brown_a.wav", "/audio/sleep/texture_brown_b.wav"]
+            },
+            {
+              "role": "cell",
+              "oneShots": [
+                "/audio/sleep/cell_d3.wav",
+                "/audio/sleep/cell_f3.wav",
+                "/audio/sleep/cell_a3.wav"
+              ]
+            }
+          ],
+          "automation": {
+            "pad": [[0.0, 0.6], [0.15, 0.95], [0.8, 0.95], [1.0, 0.55]],
+            "texture": [[0.0, 0.22], [0.15, 0.38], [0.8, 0.38], [1.0, 0.25]],
+            "pulse": [[0.0, 0.0], [1.0, 0.0]],
+            "cellDensity": [[0.0, 0.02], [0.2, 0.018], [0.85, 0.018], [1.0, 0.03]],
+            "reverbWet": [[0.0, 0.55], [0.15, 0.75], [0.85, 0.75], [1.0, 0.5]],
+            "lowPassHz": [[0.0, 1600], [0.15, 1000], [0.85, 1000], [1.0, 1800]],
+            "breathLfoHz": 0.045,
+            "breathDepth": 0.16
+          }
+        }
       },
       "cues": { "phaseEnd": "/audio/cues/soft_chime.wav", "sessionEnd": "/audio/cues/resolve.wav" }
     }

@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  RECOMMENDED_TRANSITION_T,
-  SoundscapeEngine,
-  type EnginePhase,
-  type SoundPack,
-} from "@kairos/audio-engine";
+import { RECOMMENDED_TRANSITION_T, SoundscapeEngine, type SoundPack, type ThemeId } from "@kairos/audio-engine";
 import {
   isPaused,
   isRunning,
@@ -25,11 +20,23 @@ const CROSSFADE_SEC = 6;
  */
 const FREEPLAY_T = 0.45;
 
+/** Pomodoro の Break フェーズで鳴らすテーマは固定（ユーザー選択不可）。短い休憩は Relax、
+ *  長い休憩はより深く鎮める Sleep にする — docs/04_SOUND_ENGINE.md ADR-004。 */
+const SHORT_BREAK_THEME: ThemeId = "relax";
+const LONG_BREAK_THEME: ThemeId = "sleep";
+
 export type PlaybackMode = "idle" | "freeplay" | "timer";
 export type EngineDebugInfo = ReturnType<SoundscapeEngine["getDebugInfo"]>;
 
-function toEnginePhase(phase: TimerState["phase"]): EnginePhase | null {
-  if (phase === "focus" || phase === "shortBreak" || phase === "longBreak") return phase;
+/**
+ * タイマーの現在フェーズと、ユーザーが選んだ Focus テーマから、鳴らすべきテーマを1つに決める
+ * 純粋関数。Focus フェーズ中に focusThemeId が変わった場合もこの関数の戻り値が変わるので、
+ * 呼び出し側は「前回と違う値になったらクロスフェード」という単純な比較だけで済む。
+ */
+function themeIdForTimerPhase(phase: TimerState["phase"], focusThemeId: ThemeId): ThemeId | null {
+  if (phase === "focus") return focusThemeId;
+  if (phase === "shortBreak") return SHORT_BREAK_THEME;
+  if (phase === "longBreak") return LONG_BREAK_THEME;
   return null;
 }
 
@@ -41,14 +48,10 @@ interface SoundscapeRuntimeStore {
   engineReady: boolean;
   debugInfo: EngineDebugInfo;
   mode: PlaybackMode;
-  freeplayPhase: EnginePhase | null;
-  /**
-   * Home 画面に表示される5カテゴリ（Study/Work/Relax/Sleep/Move）はUI上は別物だが、
-   * 現状のサウンドパックは focus/break の2種類しか実体を持たない。どのカテゴリが選ばれているかは
-   * ここで別管理し、freeplayPhase は「どの音響エンジンを鳴らすか」だけを表す。
-   */
-  freeplayCategoryId: string | null;
+  freeplayThemeId: ThemeId | null;
   freeplayPlaying: boolean;
+  /** Pomodoro の Focus フェーズで鳴らす/描くサウンドテーマ。デフォルトは汎用的な "Work"。 */
+  focusThemeId: ThemeId;
   /**
    * マスター音量。Home/Pomodoro どちらの音量バーからも同じ値を読み書きする
    * （エンジンはページを跨いだシングルトンなので、音量もページ間で共有するのが自然）。
@@ -58,7 +61,8 @@ interface SoundscapeRuntimeStore {
   ensureEngine: () => Promise<SoundscapeEngine>;
   /** Pomodoro 画面が Start されたら呼ぶ。以後このループがタイマー駆動でエンジンを制御する。 */
   switchToTimerMode: () => void;
-  playFreeplay: (categoryId: string, phase: EnginePhase) => Promise<void>;
+  setFocusThemeId: (id: ThemeId) => void;
+  playFreeplay: (themeId: ThemeId) => Promise<void>;
   toggleFreeplayPause: () => void;
   regenerateFreeplay: () => void;
   stopFreeplay: () => void;
@@ -68,7 +72,7 @@ interface SoundscapeRuntimeStore {
 // このモジュールを跨いだ再インポートでも二重初期化しないよう、状態はモジュールスコープに持つ。
 let engine: SoundscapeEngine | null = null;
 let loopStarted = false;
-let enginePhaseRef: EnginePhase | null = null;
+let currentThemeIdRef: ThemeId | null = null;
 let transitionArmed = false;
 let wasPaused = false;
 
@@ -93,23 +97,24 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
           else void engine.resume().catch(logEngineError);
         }
 
-        const enginePhase = toEnginePhase(state.phase);
-        if (!enginePhase) {
-          if (enginePhaseRef !== null) void engine.stop().catch(logEngineError);
-          enginePhaseRef = null;
+        const themeId = themeIdForTimerPhase(state.phase, get().focusThemeId);
+        if (!themeId) {
+          if (currentThemeIdRef !== null) void engine.stop().catch(logEngineError);
+          currentThemeIdRef = null;
           transitionArmed = false;
           set({ debugInfo: engine.getDebugInfo() });
           return;
         }
 
-        // フェーズが実際に切り替わった（初回開始・Skip・早期トリガーの取りこぼしからの復帰、
-        // すべてこの1箇所で処理する。ここを素通りさせるとBGMが切り替わらないバグになる）。
-        if (enginePhase !== enginePhaseRef) {
-          const isFirstPhase = enginePhaseRef === null;
-          enginePhaseRef = enginePhase;
+        // テーマが実際に切り替わった（フェーズ遷移・Skip・早期トリガーの取りこぼしからの復帰・
+        // Focus 中の手動テーマ変更、すべてこの1箇所で処理する。ここを素通りさせるとBGMが
+        // 切り替わらないバグになる）。
+        if (themeId !== currentThemeIdRef) {
+          const isFirstTheme = currentThemeIdRef === null;
+          currentThemeIdRef = themeId;
           transitionArmed = false;
-          if (isFirstPhase) void engine.begin(enginePhase, state.sessionSeed).catch(logEngineError);
-          else void engine.transitionTo(enginePhase, state.sessionSeed, CROSSFADE_SEC).catch(logEngineError);
+          if (isFirstTheme) void engine.begin(themeId, state.sessionSeed).catch(logEngineError);
+          else void engine.transitionTo(themeId, state.sessionSeed, CROSSFADE_SEC).catch(logEngineError);
           set({ debugInfo: engine.getDebugInfo() });
           return;
         }
@@ -126,10 +131,10 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
         if (!transitionArmed && t >= RECOMMENDED_TRANSITION_T) {
           transitionArmed = true;
           const peeked = peekSkip(state, now);
-          const nextEnginePhase = toEnginePhase(peeked.phase);
-          if (nextEnginePhase) {
-            void engine.transitionTo(nextEnginePhase, peeked.sessionSeed, CROSSFADE_SEC).catch(logEngineError);
-            enginePhaseRef = nextEnginePhase;
+          const nextThemeId = themeIdForTimerPhase(peeked.phase, get().focusThemeId);
+          if (nextThemeId) {
+            void engine.transitionTo(nextThemeId, peeked.sessionSeed, CROSSFADE_SEC).catch(logEngineError);
+            currentThemeIdRef = nextThemeId;
           }
         }
         return;
@@ -149,9 +154,9 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     engineReady: false,
     debugInfo: null,
     mode: "idle",
-    freeplayPhase: null,
-    freeplayCategoryId: null,
+    freeplayThemeId: null,
     freeplayPlaying: false,
+    focusThemeId: "work",
     masterVolume: 0.8,
 
     ensureEngine: async () => {
@@ -174,13 +179,15 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
 
     switchToTimerMode: () => set({ mode: "timer" }),
 
-    playFreeplay: async (categoryId, phase) => {
+    setFocusThemeId: (id) => set({ focusThemeId: id }),
+
+    playFreeplay: async (themeId) => {
       const e = await get().ensureEngine();
-      set({ mode: "freeplay", freeplayPhase: phase, freeplayCategoryId: categoryId, freeplayPlaying: true });
+      set({ mode: "freeplay", freeplayThemeId: themeId, freeplayPlaying: true });
       try {
         // begin() は currentGraph が既にあれば自動でクロスフェードに切り替える。
-        await e.begin(phase, Date.now());
-        enginePhaseRef = phase;
+        await e.begin(themeId, Date.now());
+        currentThemeIdRef = themeId;
       } catch (err) {
         logEngineError(err);
       }
@@ -197,12 +204,12 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
 
     regenerateFreeplay: () => {
       const e = engine;
-      const phase = get().freeplayPhase;
-      if (!e || !phase) return;
+      const themeId = get().freeplayThemeId;
+      if (!e || !themeId) return;
       void e
-        .transitionTo(phase, Date.now(), CROSSFADE_SEC)
+        .transitionTo(themeId, Date.now(), CROSSFADE_SEC)
         .then(() => {
-          enginePhaseRef = phase;
+          currentThemeIdRef = themeId;
         })
         .catch(logEngineError);
     },
@@ -210,9 +217,9 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     stopFreeplay: () => {
       const e = engine;
       if (!e) return;
-      set({ mode: "idle", freeplayPhase: null, freeplayCategoryId: null, freeplayPlaying: false });
+      set({ mode: "idle", freeplayThemeId: null, freeplayPlaying: false });
       void e.stop().catch(logEngineError);
-      enginePhaseRef = null;
+      currentThemeIdRef = null;
     },
 
     setMasterVolume: (v) => {
