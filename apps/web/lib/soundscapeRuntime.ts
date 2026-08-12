@@ -93,6 +93,9 @@ interface SoundscapeRuntimeStore {
 
 // このモジュールを跨いだ再インポートでも二重初期化しないよう、状態はモジュールスコープに持つ。
 let engine: SoundscapeEngine | null = null;
+// ensureEngine() の呼び出しが重なった際に AudioContext / SoundscapeEngine を複数生成しない
+// ようにする in-flight Promise キャッシュ（下記 ensureEngine 参照）。
+let engineInitPromise: Promise<SoundscapeEngine> | null = null;
 let loopStarted = false;
 let currentThemeIdRef: ThemeId | null = null;
 let transitionArmed = false;
@@ -267,20 +270,35 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
 
     ensureEngine: async () => {
       if (engine) return engine;
-      const created = new SoundscapeEngine();
-      await created.init();
-      const res = await fetch("/packs.json");
-      const { packs } = (await res.json()) as { packs: SoundPack[] };
-      const pack = packs[0];
-      if (!pack) throw new Error("packs.json に SoundPack が1つも定義されていません。");
-      await created.loadPack(pack);
-      // Start前・Pomodoro開始前に音量バーが操作されている場合があるので、
-      // エンジン生成のタイミングでその時点のマスター音量を適用する。
-      created.setMasterVolume(get().masterVolume);
-      engine = created;
-      set({ engineReady: true });
-      startLoopOnce();
-      return created;
+      // 呼び出し元が複数ある（TopNav の先取り初期化、各ページの自動プレビュー等）ため、
+      // 初期化が完了する前に ensureEngine() が重ねて呼ばれることが普通に起こる。
+      // in-flight の Promise を共有せずに `if (engine) return engine` だけに頼ると、
+      // まだ engine が代入されていない間は毎回ガードを素通りしてしまい、
+      // AudioContext / SoundscapeEngine が複数生成される競合状態になる
+      // （最後に完了した方だけが engine 変数を勝ち取り、先に作られた方は
+      // 誰にも参照されないまま鳴らないインスタンスとして残ってしまう ＝ 「音が鳴らない」バグの実体）。
+      // そのため in-flight の Promise 自体をキャッシュし、後続の呼び出しは全員それに相乗りさせる。
+      if (!engineInitPromise) {
+        engineInitPromise = (async () => {
+          const created = new SoundscapeEngine();
+          await created.init();
+          const res = await fetch("/packs.json");
+          const { packs } = (await res.json()) as { packs: SoundPack[] };
+          const pack = packs[0];
+          if (!pack) throw new Error("packs.json に SoundPack が1つも定義されていません。");
+          await created.loadPack(pack);
+          // Start前・Pomodoro開始前に音量バーが操作されている場合があるので、
+          // エンジン生成のタイミングでその時点のマスター音量を適用する。
+          created.setMasterVolume(get().masterVolume);
+          engine = created;
+          set({ engineReady: true });
+          startLoopOnce();
+          return created;
+        })().finally(() => {
+          engineInitPromise = null;
+        });
+      }
+      return engineInitPromise;
     },
 
     switchToTimerMode: () => set({ mode: "timer" }),
