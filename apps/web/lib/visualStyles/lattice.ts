@@ -101,8 +101,8 @@ export const latticeStyle: VisualStyle<LatticeState> = {
         if (s === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
-      ctx.strokeStyle = rgba(rgb, (0.28 + curveAmp * 0.32) * (0.2 + converge * 0.8) * breath);
-      ctx.lineWidth = Math.max(0.8, minDim * 0.0011);
+      ctx.strokeStyle = rgba(rgb, (0.38 + curveAmp * 0.36) * (0.24 + converge * 0.8) * breath);
+      ctx.lineWidth = Math.max(1, minDim * 0.0015);
       ctx.stroke();
       ctx.restore();
     }
@@ -152,8 +152,8 @@ export const latticeStyle: VisualStyle<LatticeState> = {
       if (s === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = rgba(rgb, (0.14 + secondaryBreath * 0.16) * (0.3 + converge * 0.5));
-    ctx.lineWidth = Math.max(0.8, minDim * 0.001);
+    ctx.strokeStyle = rgba(rgb, (0.2 + secondaryBreath * 0.2) * (0.35 + converge * 0.5));
+    ctx.lineWidth = Math.max(1, minDim * 0.0013);
     ctx.stroke();
     ctx.restore();
   },

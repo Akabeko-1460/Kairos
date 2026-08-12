@@ -21,35 +21,107 @@ interface Nebula {
   sizeRatio: number;
 }
 /**
- * 満ち欠け: 直接的な月の絵ではなく、同じ場所を回る「円（うっすらした full なリング）」と
- * 「円弧（明るい弧）」の組。2つは周期が異なるためゆっくり重なったりズレたりし、
- * そのズレそのものが満ち欠けの印象を作る（他レイヤーと同じモアレ干渉技法の応用）。
+ * 太陽系のイメージ: 画面中心を「太陽」として、月を表す円がいくつか同心円状の軌道を巡り、
+ * さらに画面の端から端までかかるほど巨大な円弧（同じ中心を持つ、ずっと半径の大きい軌道の一部）
+ * が別の周期でゆっくり掃過する。全員が同じ中心の周りを回る同心円軌道である点が「太陽系」らしさで、
+ * 半径が大きい軌道ほど周期を長くしている（外側の惑星ほど公転が遅い、という実際の太陽系に寄せた）。
  */
-interface PhasePair {
-  anchorNx: number; // この組が漂う中心（画面に対する正規化位置）
-  anchorNy: number;
-  ringRadiusRatio: number; // 円・弧自体の半径（minDim比）
-  orbitR: number; // 円・弧の中心が anchor の周りを漂う軌道半径（minDim比）
-  circleAngle0: number;
-  circleSpeed: number;
-  arcAngle0: number;
-  arcSpeed: number; // circleSpeed とわずかに異なる値にし、重なりが周期的にズレていくようにする
+interface MoonOrbit {
+  orbitRadiusRatio: number; // 中心からの軌道半径（minDim比）
+  moonRadiusRatio: number; // 月自体の半径（minDim比）
+  angle0: number;
+  speed: number;
+}
+interface ArcOrbit {
+  arcRadiusRatio: number; // 弧が乗る円の半径（maxDim比）。巨大にして画面を横断させる
   arcSpan: number; // 弧の角度幅（ラジアン）
-  arcSpin: number; // 弧自体の向きの回転速度
+  angle0: number;
+  speed: number;
 }
 interface ConstellationGroup {
-  starIndices: number[];
-  rotSpeed: number;
+  shapeIndex: number;
   centerNx: number;
   centerNy: number;
+  scale: number; // 星座の見た目の大きさ（minDim比）
+  baseRotation: number; // 配置時の固定回転（同じ星座ばかりに見えないための変化）
+  rotSpeed: number;
 }
 interface StarfieldState {
   stars: Star[];
   nebulae: Nebula[];
-  phasePairs: PhasePair[];
+  moons: MoonOrbit[];
+  arcs: ArcOrbit[];
   constellations: ConstellationGroup[];
   seedBase: number;
 }
+
+/**
+ * 実在の星座（の簡略化した形）。0..1 に正規化した頂点座標と、それを結ぶ辺。
+ * ランダムな星をランダムな順で結ぶのではなく、実際の星座の形をなぞることで
+ * 「星座らしさ」を出す（北斗七星＝おおぐま座の柄杓、カシオペア座のW字、オリオン座の砂時計形）。
+ */
+const CONSTELLATION_SHAPES: ReadonlyArray<{
+  points: ReadonlyArray<readonly [number, number]>;
+  edges: ReadonlyArray<readonly [number, number]>;
+}> = [
+  {
+    // 北斗七星（おおぐま座の一部）: 柄の3星 + 柄杓の4星
+    points: [
+      [0.05, 0.1],
+      [0.28, 0.22],
+      [0.5, 0.3],
+      [0.68, 0.46],
+      [0.95, 0.4],
+      [0.88, 0.72],
+      [0.55, 0.78],
+    ],
+    edges: [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 4],
+      [4, 5],
+      [5, 6],
+      [6, 3],
+    ],
+  },
+  {
+    // カシオペア座: W字のジグザグ
+    points: [
+      [0.0, 0.55],
+      [0.22, 0.05],
+      [0.48, 0.62],
+      [0.75, 0.0],
+      [1.0, 0.5],
+    ],
+    edges: [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 4],
+    ],
+  },
+  {
+    // オリオン座: 両肩・三ツ星・両足の砂時計形
+    points: [
+      [0.1, 0.05],
+      [0.9, 0.1],
+      [0.38, 0.48],
+      [0.5, 0.52],
+      [0.62, 0.56],
+      [0.15, 0.95],
+      [0.85, 0.9],
+    ],
+    edges: [
+      [0, 2],
+      [2, 3],
+      [3, 4],
+      [4, 1],
+      [2, 5],
+      [4, 6],
+    ],
+  },
+];
 
 const SLEEP_SHOOT_PERIOD = 6.0;
 
@@ -72,33 +144,39 @@ export const starfieldStyle: VisualStyle<StarfieldState> = {
       speed: (0.01 + rng() * 0.015) * (i % 2 === 0 ? 1 : -1),
       sizeRatio: 0.2 + rng() * 0.16,
     }));
-    const phasePairs: PhasePair[] = Array.from({ length: 3 }, () => ({
-      anchorNx: 0.15 + rng() * 0.7,
-      anchorNy: 0.12 + rng() * 0.3,
-      ringRadiusRatio: 0.045 + rng() * 0.025,
-      orbitR: 0.025 + rng() * 0.02,
-      circleAngle0: rng() * Math.PI * 2,
-      circleSpeed: (0.012 + rng() * 0.01) * (rng() < 0.5 ? 1 : -1),
-      arcAngle0: rng() * Math.PI * 2,
-      arcSpeed: (0.006 + rng() * 0.01) * (rng() < 0.5 ? 1 : -1),
-      arcSpan: 2.0 + rng() * 1.4,
-      arcSpin: (0.003 + rng() * 0.006) * (rng() < 0.5 ? 1 : -1),
-    }));
-    // 星座: 実際の星座のように、数個の群れをそれぞれ独立にゆっくり回転させる
-    // （単一の線画ではなく「夜空のあちこちに星座がある」という物語にする）。
-    const constellations: ConstellationGroup[] = Array.from({ length: 2 }, (_, i) => {
-      const starIndices = Array.from({ length: 5 + Math.floor(rng() * 2) }, () => Math.floor(rng() * stars.length));
+    // 月: 3つの同心円軌道を巡る。外側の軌道ほど公転周期を長くする（太陽系らしさ）
+    const moons: MoonOrbit[] = Array.from({ length: 3 }, (_, i) => {
+      const orbitRadiusRatio = 0.17 + i * 0.09 + rng() * 0.04;
+      const baseSpeed = 0.024 / (1 + i * 0.9); // 外側ほど遅い
       return {
-        starIndices,
-        rotSpeed: (0.004 + rng() * 0.006) * (i % 2 === 0 ? 1 : -1),
-        centerNx: 0.2 + rng() * 0.6,
-        centerNy: 0.2 + rng() * 0.5,
+        orbitRadiusRatio,
+        moonRadiusRatio: 0.06 + rng() * 0.03,
+        angle0: rng() * Math.PI * 2,
+        speed: baseSpeed * (0.75 + rng() * 0.5) * (rng() < 0.5 ? 1 : -1),
       };
     });
-    return { stars, nebulae, phasePairs, constellations, seedBase: seed * 97 + 13 };
+    // 円弧: 画面を横断するほど巨大な同心円の一部だけを描き、ゆっくり掃過させる。
+    // 月よりさらに外側の軌道という位置づけなので、さらに周期を長くする。
+    const arcs: ArcOrbit[] = Array.from({ length: 2 }, (_, i) => ({
+      arcRadiusRatio: 0.75 + i * 0.28 + rng() * 0.12,
+      arcSpan: 0.55 + rng() * 0.35,
+      angle0: rng() * Math.PI * 2,
+      speed: ((0.0035 + rng() * 0.003) / (1 + i * 0.6)) * (rng() < 0.5 ? 1 : -1),
+    }));
+    // 星座: 実在の星座の形（CONSTELLATION_SHAPES）を、夜空のあちこちに違う大きさ・向きで配置する
+    const shapeOrder = [0, 1, 2].sort(() => rng() - 0.5);
+    const constellations: ConstellationGroup[] = Array.from({ length: 2 }, (_, i) => ({
+      shapeIndex: shapeOrder[i]!,
+      centerNx: 0.22 + rng() * 0.56,
+      centerNy: 0.16 + rng() * 0.45,
+      scale: 0.16 + rng() * 0.08,
+      baseRotation: rng() * Math.PI * 2,
+      rotSpeed: (0.004 + rng() * 0.006) * (i % 2 === 0 ? 1 : -1),
+    }));
+    return { stars, nebulae, moons, arcs, constellations, seedBase: seed * 97 + 13 };
   },
   draw(f, state) {
-    const { ctx, w, h, cx, cy, minDim, t, amp, rgb } = f;
+    const { ctx, w, h, cx, cy, minDim, maxDim, t, amp, rgb } = f;
     const breath = storyBreath(t, STORY_PERIOD_SEC.starfield);
 
     for (const neb of state.nebulae) {
@@ -115,64 +193,74 @@ export const starfieldStyle: VisualStyle<StarfieldState> = {
       ctx.fill();
     }
 
-    // 満ち欠け: 円（うっすら full なリング）と円弧（明るい弧）が、それぞれ独立した周期で
-    // 同じ場所の周りを漂う。周期が異なるため重なったり離れたりを繰り返し、
-    // その重なりのズレそのものが満ち欠けの物語になる（直接的な月の絵は描かない）。
-    for (const pair of state.phasePairs) {
-      const anchorX = pair.anchorNx * w;
-      const anchorY = pair.anchorNy * h;
-      const ringR = minDim * pair.ringRadiusRatio * (0.96 + amp * 0.05);
-      const orbit = minDim * pair.orbitR;
+    // 月: 画面中心という共通の「太陽」の周りを、3つの同心円軌道でゆっくり公転する
+    for (const moon of state.moons) {
+      const angle = moon.angle0 + t * moon.speed;
+      const x = cx + Math.cos(angle) * minDim * moon.orbitRadiusRatio;
+      const y = cy + Math.sin(angle) * minDim * moon.orbitRadiusRatio * 0.6;
+      const r = minDim * moon.moonRadiusRatio * (0.96 + amp * 0.05);
 
-      const circleAngle = pair.circleAngle0 + t * pair.circleSpeed;
-      const circleX = anchorX + Math.cos(circleAngle) * orbit;
-      const circleY = anchorY + Math.sin(circleAngle) * orbit * 0.6;
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 2.4);
+      glow.addColorStop(0, rgba(rgb, (0.14 + amp * 0.04) * breath));
+      glow.addColorStop(1, rgba(rgb, 0));
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.arc(circleX, circleY, ringR, 0, Math.PI * 2);
-      ctx.strokeStyle = rgba(rgb, (0.1 + amp * 0.04) * breath);
-      ctx.lineWidth = Math.max(0.8, minDim * 0.0013);
-      ctx.stroke();
+      ctx.arc(x, y, r * 2.4, 0, Math.PI * 2);
+      ctx.fill();
 
-      const arcAngle = pair.arcAngle0 + t * pair.arcSpeed;
-      const arcX = anchorX + Math.cos(arcAngle) * orbit;
-      const arcY = anchorY + Math.sin(arcAngle) * orbit * 0.6;
-      const arcStart = t * pair.arcSpin;
       ctx.beginPath();
-      ctx.arc(arcX, arcY, ringR, arcStart, arcStart + pair.arcSpan);
-      ctx.strokeStyle = rgba(rgb, (0.24 + amp * 0.08) * breath);
-      ctx.lineWidth = Math.max(1, minDim * 0.0017);
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = rgba(rgb, (0.5 + amp * 0.1) * breath);
+      ctx.fill();
+    }
+
+    // 円弧: 同じ中心を持つ、画面を横断するほど巨大な軌道の一部だけを描き、掃過させる。
+    // 月よりさらに外側の同心円という位置づけ（太陽系のイメージ）。
+    for (const arc of state.arcs) {
+      const r = maxDim * arc.arcRadiusRatio;
+      const start = arc.angle0 + t * arc.speed;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, start, start + arc.arcSpan);
+      ctx.strokeStyle = rgba(rgb, (0.22 + amp * 0.08) * breath);
+      ctx.lineWidth = Math.max(1.2, minDim * 0.002);
       ctx.stroke();
     }
 
-    // 星座: 夜空のあちこちに、数個の星座がそれぞれ独立にゆっくり回転しながら浮かぶ
+    // 星座: 実在の星座の形（CONSTELLATION_SHAPES）を、夜空のあちこちに配置してゆっくり回転させる
     for (const group of state.constellations) {
+      const shape = CONSTELLATION_SHAPES[group.shapeIndex]!;
       const gx = group.centerNx * w;
       const gy = group.centerNy * h;
-      ctx.save();
-      ctx.translate(gx, gy);
-      ctx.rotate(t * group.rotSpeed);
-      ctx.translate(-gx, -gy);
-      ctx.strokeStyle = rgba(rgb, 0.22 + amp * 0.12);
+      const size = minDim * group.scale;
+      const rotation = group.baseRotation + t * group.rotSpeed;
+      const cos = Math.cos(rotation);
+      const sin = Math.sin(rotation);
+
+      const screenPoints = shape.points.map(([px, py]) => {
+        // 形状の中心 (0.5, 0.5) を基準に回転させてから配置する
+        const lx = (px - 0.5) * size;
+        const ly = (py - 0.5) * size;
+        return [gx + lx * cos - ly * sin, gy + lx * sin + ly * cos] as const;
+      });
+
+      ctx.strokeStyle = rgba(rgb, 0.24 + amp * 0.12);
       ctx.lineWidth = 1;
       ctx.beginPath();
-      for (const [i, idx] of group.starIndices.entries()) {
-        const s = state.stars[idx]!;
-        const x = s.nx * w;
-        const y = s.ny * h;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+      for (const [a, b] of shape.edges) {
+        const [x1, y1] = screenPoints[a]!;
+        const [x2, y2] = screenPoints[b]!;
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
       }
       ctx.stroke();
       // 星座を成す星は、その場所に本当に星座があると分かるよう小さな輪でマークする
-      for (const idx of group.starIndices) {
-        const s = state.stars[idx]!;
+      for (const [x, y] of screenPoints) {
         ctx.beginPath();
-        ctx.arc(s.nx * w, s.ny * h, s.size * 2.2, 0, Math.PI * 2);
-        ctx.strokeStyle = rgba(rgb, 0.3 + amp * 0.12);
+        ctx.arc(x, y, Math.max(1.4, minDim * 0.003), 0, Math.PI * 2);
+        ctx.strokeStyle = rgba(rgb, 0.32 + amp * 0.12);
         ctx.lineWidth = 1;
         ctx.stroke();
       }
-      ctx.restore();
     }
 
     // 星: 個々にゆっくり「近づいたり遠ざかったり」する視差の呼吸（深く沈んでいく物語）
