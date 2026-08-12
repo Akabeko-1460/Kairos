@@ -309,6 +309,15 @@
       `pnpm --filter @kairos/audio-engine test`（48/48）・`pnpm --filter @kairos/web build`・
       `pnpm --filter @kairos/web lint` を実行し、いずれも成功することを確認済み
       （差分はコメント文字列とファイル配置のみで、実装ロジックへの変更はゼロ）。
+      **rev.6.8**: 「文献調査のうち使用したものをCreditに記載してほしい」という要望を受け、
+      `docs/research/` の7本のうち、実際に ADR・ソースコメントから設計根拠として引用されている
+      4本（`sound-environment-focus-chatgpt.md`/`focus-sound-literature-review-gemini.md`/
+      `relax-sleep-sound-chatgpt.md`/`environment-adaptive-sound.md`）だけを選び、
+      `apps/web/app/credit/page.tsx` に新セクション「サウンド設計の文献調査」として追加した。
+      調査段階で集めたが設計に直接反映されなかった3本（`bgm-productivity-chatgpt.md`/
+      `focus-bgm-literature-review.md`/`relax-sleep-sound.md`）は掲載対象外とした
+      （`docs/research/` 内での参照有無は `docs/README.md` の索引と、リポジトリ全体を
+      対象にした文字列検索で確認済み）。
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
 
