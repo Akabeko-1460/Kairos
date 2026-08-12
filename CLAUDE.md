@@ -256,6 +256,24 @@
       `playFreeplay`/`ensureEngine` が例外を投げた場合に表示するエラーメッセージを追加し、
       これまで `console.error` のみで利用者には何も見えなかった失敗を可視化した
       （`apps/web/hooks/useFreeplay.ts` に `debugInfo` を追加露出）。
+      **rev.6.5**: 「TimerのTimerでは音が鳴るがPomodoroでは鳴らない」という報告を受け調査した
+      結果、Pomodoroだけ構造的にプレビュー再生の仕組みが無いことが判明した（Timer/Stopwatchは
+      Home と同じ freeplay 再生で「選ぶ＝鳴る」を実現していたが、Pomodoroは `useSoundscape()`
+      がマウント時に無条件で `switchToTimerMode()` を呼んでおり、Start前(`phase==="idle"`)は
+      `themeIdForTimerPhase()` が `null` を返すため常に無音だった。SOUND選択も
+      `setFocusThemeId` を呼ぶだけで再生には一切繋がっていなかった）。`useSoundscape()` から
+      自動 `switchToTimerMode()` を削除し、Pomodoro側で明示的に制御するよう変更:
+      Start前/セッション完了後(idle/completed)は Timer/Stopwatch と同じ freeplay プレビュー
+      （`useFreeplay().playFreeplay(focusThemeId)`）を使い、SOUND選択時にも同様に再生し直す
+      ようにした（`handleSelectFocusTheme`）。実行中（focus/shortBreak/longBreak）に入った
+      瞬間に `switchToTimerMode()` を呼んで TimerState 駆動のフェーズ別再生（休憩テーマへの
+      自動切替・クロスフェード）に引き継ぐ。Reset時は次の tick で一度 `engine.stop()` されて
+      からプレビューが再開する一瞬の途切れを避けるため、`reset()` 直後に同期的に
+      `playFreeplay()` を呼んで mode を先に "freeplay" へ倒す `handleReset` を追加。背景アート
+      の `active` も「実際に音が鳴っているか」基準（idle中は `freeplayPlaying`）に修正した。
+      Timer/Stopwatch と同じ suspended状態のヒント文言・エラーメッセージ表示も追加。
+      chrome-devtools MCP でPomodoro画面遷移直後・SOUND切替後の両方で実際の音声信号
+      （RMS/ピークとも非ゼロ、AudioContext常に1個）を確認済み。
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
 

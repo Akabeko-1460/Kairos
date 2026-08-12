@@ -5,6 +5,7 @@ import { PresetSelector } from "@/components/PresetSelector";
 import { RoundIndicator } from "@/components/RoundIndicator";
 import { TimerRing } from "@/components/TimerRing";
 import { VolumeSlider } from "@/components/VolumeSlider";
+import { useFreeplay } from "@/hooks/useFreeplay";
 import { useNow } from "@/hooks/useNow";
 import { useSoundscape } from "@/hooks/useSoundscape";
 import { useTaskListStore, type TaskItem } from "@/hooks/useTaskList";
@@ -13,6 +14,7 @@ import { useBackgroundArtStore } from "@/lib/backgroundArtStore";
 import { formatMmSs } from "@/lib/formatTime";
 import { FOCUS_SOUND_THEMES } from "@/lib/soundThemes";
 import { isRunning, progress, remainingMs, type PomodoroPreset } from "@kairos/core";
+import type { ThemeId } from "@kairos/audio-engine";
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState, type KeyboardEvent } from "react";
 
@@ -120,8 +122,12 @@ export default function PomodoroPage() {
   const setTaskHeadline = useTimerStore((s) => s.setTaskHeadline);
   const changePreset = useTimerStore((s) => s.changePreset);
 
-  const { ensureEngine, engineReady, masterVolume, setMasterVolume, focusThemeId, setFocusThemeId } =
+  const { ensureEngine, switchToTimerMode, engineReady, debugInfo, masterVolume, setMasterVolume, focusThemeId, setFocusThemeId } =
     useSoundscape();
+  // Start前(idle)/セッション完了後(completed)は、Timer/Stopwatchと同じ「選ぶ＝鳴る」の
+  // フリー再生プレビューを使う（下記 useEffect）。実行中は switchToTimerMode() で
+  // TimerState 駆動のフェーズ別再生（フォーカス/休憩の自動切替）へ引き継ぐ。
+  const { freeplayThemeId, freeplayPlaying, playFreeplay } = useFreeplay();
   const taskItems = useTaskListStore((s) => s.items);
   const addTaskItem = useTaskListStore((s) => s.addItem);
   const removeTaskItem = useTaskListStore((s) => s.removeItem);
@@ -129,9 +135,45 @@ export default function PomodoroPage() {
   const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
   const now = useNow(isRunning(state));
   const [starting, setStarting] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
 
   const isIdle = state.phase === "idle" || state.phase === "completed";
   const isBreakPhase = state.phase === "shortBreak" || state.phase === "longBreak";
+  const isPreviewingSelected = freeplayPlaying && freeplayThemeId === focusThemeId;
+  // ブラウザの自動再生ポリシーで AudioContext が suspended のまま留め置かれている状態。
+  // 画面上の次のクリック/タップで自動的に再開する保険（SoundscapeEngine.armGestureUnlock）
+  // が張ってあるので、ここではその間の理由を利用者に示すだけに留める。
+  const audioSuspended = engineReady && debugInfo?.contextState === "suspended";
+
+  // 実行中セッションが終わって設定画面（idle/completed）に戻ったら、TimerState駆動の
+  // 再生から抜けて再びプレビューへ。設定画面に入った瞬間から選択中のサウンドを鳴らしておく
+  // （engineReady を待たず、ここで直接 ensureEngine() を呼ぶ。既に用意済みなら即resolveする
+  // だけなので安全）。
+  useEffect(() => {
+    if (!isIdle || isPreviewingSelected) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        await ensureEngine();
+        if (cancelled) return;
+        await playFreeplay(focusThemeId);
+        if (!cancelled) setAudioError(null);
+      } catch (err) {
+        console.error("[Kairos] SoundscapeEngine error:", err);
+        if (!cancelled) setAudioError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isIdle, focusThemeId, ensureEngine, playFreeplay, isPreviewingSelected]);
+
+  // 実行中（focus/shortBreak/longBreak）は TimerState 駆動のフェーズ別再生へ切り替える。
+  // リロード直後に永続化された TimerState が既に running/paused だった場合もここで拾う
+  // （Start ボタンを経由しないため、switchToTimerMode() を呼ぶ機会が他にない）。
+  useEffect(() => {
+    if (!isIdle) switchToTimerMode();
+  }, [isIdle, switchToTimerMode]);
 
   const focusTheme = FOCUS_SOUND_THEMES.find((t) => t.id === focusThemeId) ?? FOCUS_SOUND_THEMES[0]!;
   // Start・Preset・サイクルインジケーターの配色も選択中のサウンドテーマに合わせる。
@@ -141,22 +183,44 @@ export default function PomodoroPage() {
   // 画面全体（ヘッダーも含む）で共有する背景アートに、このページの状態を反映する。
   // タイマーリングやボタンの配色（focus-accent/break-accent）は変えず、背景アートの
   // 見た目（styleId/accentColor）だけを選択中のサウンドテーマに合わせる。
+  // active は「実際に音が鳴っているか」で決める。Start前(idle)のプレビュー再生中も
+  // Timer/Stopwatchと同様に背景を活性化させる（実行中は isRunning(state) を見る）。
   useEffect(() => {
     setBackgroundArt({
-      active: isRunning(state),
+      active: isIdle ? freeplayPlaying : isRunning(state),
       styleId: isBreakPhase ? "flow" : focusTheme.visual,
       accentColor: isBreakPhase ? BREAK_ACCENT_HEX : focusTheme.accent,
       holeRadiusRatio: 0,
       seed: isBreakPhase ? 2 : 1 + FOCUS_SOUND_THEMES.indexOf(focusTheme),
     });
-  }, [state, isBreakPhase, focusTheme, setBackgroundArt]);
+  }, [state, isIdle, isBreakPhase, focusTheme, freeplayPlaying, setBackgroundArt]);
+
+  const handleSelectFocusTheme = async (id: ThemeId) => {
+    setFocusThemeId(id);
+    if (!isIdle) return;
+    try {
+      await ensureEngine();
+      await playFreeplay(id);
+      setAudioError(null);
+    } catch (err) {
+      console.error("[Kairos] SoundscapeEngine error:", err);
+      setAudioError(err instanceof Error ? err.message : String(err));
+    }
+  };
 
   const handleStart = async () => {
     setStarting(true);
     try {
       // AudioContext の生成/resume はユーザー操作起点でなければならない（ADR-003）。
       await ensureEngine();
+      // 設定画面で既に選択中のサウンドをプレビュー再生している場合は、同じテーマへの
+      // クロスフェードをもう一度挟まないようにする（無音の谷ができないようにするため）。
+      if (!isPreviewingSelected) await playFreeplay(focusThemeId);
       start();
+      setAudioError(null);
+    } catch (err) {
+      console.error("[Kairos] SoundscapeEngine error:", err);
+      setAudioError(err instanceof Error ? err.message : String(err));
     } finally {
       setStarting(false);
     }
@@ -168,8 +232,27 @@ export default function PomodoroPage() {
     setStarting(true);
     try {
       await ensureEngine();
+      setAudioError(null);
+    } catch (err) {
+      console.error("[Kairos] SoundscapeEngine error:", err);
+      setAudioError(err instanceof Error ? err.message : String(err));
     } finally {
       setStarting(false);
+    }
+  };
+
+  // Reset は実行中の TimerState 駆動再生から抜けて設定画面のプレビューへ戻る操作。
+  // 下の useEffect（isIdle依存）に任せると、"timer"モードのまま迎える次のtickが
+  // phase=idle を見て一度 engine.stop() してしまい、直後の playFreeplay() 再開との間に
+  // 一瞬の途切れが生じる。reset() の直後に同期的に playFreeplay() を呼び、mode を
+  // "freeplay" へ先に倒しておくことでその隙間を消す。
+  const handleReset = () => {
+    reset();
+    if (!isPreviewingSelected) {
+      void playFreeplay(focusThemeId).catch((err: unknown) => {
+        console.error("[Kairos] SoundscapeEngine error:", err);
+        setAudioError(err instanceof Error ? err.message : String(err));
+      });
     }
   };
 
@@ -226,7 +309,7 @@ export default function PomodoroPage() {
                 <motion.button
                   {...buttonMotion}
                   type="button"
-                  onClick={reset}
+                  onClick={handleReset}
                   className="rounded-full border border-border px-6 py-2.5 text-sm font-medium text-foreground"
                 >
                   Reset
@@ -265,7 +348,7 @@ export default function PomodoroPage() {
                 <motion.button
                   {...buttonMotion}
                   type="button"
-                  onClick={reset}
+                  onClick={handleReset}
                   className="rounded-full border border-border px-6 py-2.5 text-sm font-medium text-foreground"
                 >
                   Reset
@@ -273,6 +356,13 @@ export default function PomodoroPage() {
               </>
             )}
           </div>
+
+          {isIdle && audioSuspended && (
+            <p className="max-w-xs text-center text-[11px] text-muted/70">
+              🔇 サウンドは準備できています。ブラウザの再生制限のため、画面をどこか一度タップすると鳴り始めます。
+            </p>
+          )}
+          {audioError && <p className="max-w-xs text-center text-[11px] text-red-400">サウンドの再生に失敗しました: {audioError}</p>}
         </div>
 
         <div className="flex w-full max-w-sm flex-col items-center gap-8 lg:items-start">
@@ -315,7 +405,7 @@ export default function PomodoroPage() {
           {isIdle && (
             <div className="w-full">
               <p className="mb-2 text-[10px] tracking-widest text-muted/60">SOUND</p>
-              <FocusThemeSelector selectedId={focusThemeId} onSelect={setFocusThemeId} />
+              <FocusThemeSelector selectedId={focusThemeId} onSelect={handleSelectFocusTheme} />
             </div>
           )}
 
