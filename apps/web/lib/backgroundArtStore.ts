@@ -18,8 +18,8 @@ interface BackgroundArtStore {
 
 const DEFAULT_CONFIG: BackgroundArtConfig = {
   active: false,
-  styleId: "starfield",
-  accentColor: "#8b8b93",
+  styleId: "chronos",
+  accentColor: "#ffffff",
   holeRadiusRatio: 0,
   seed: 0,
 };

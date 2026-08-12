@@ -22,7 +22,7 @@ export interface ShaderPalette {
   warpStrength: number;
   flowSpeed: number;
   storyPeriodSec: number; // このアート全体が「呼吸」する周期。0にはならない（常に何かが見えている）
-  patternType: number; // 0=Study(格子構造) 1=Work(回路状の脈) 2=Relax(純粋な有機模様) 3=Sleep(疎らな瞬き) 4=Move(鋭いコントラスト)
+  patternType: number; // 0=Study(格子構造) 1=Work(回路状の脈) 2=Relax(純粋な有機模様) 3=Sleep(疎らな瞬き) 4=Move(鋭いコントラスト) 5=Chronos(装飾なし)
 }
 
 function hexToUnit(hex: string): [number, number, number] {
@@ -81,6 +81,18 @@ export const SHADER_PALETTES: Record<VisualStyleId, ShaderPalette> = {
     flowSpeed: 0.09,
     storyPeriodSec: STORY_PERIOD_SEC.trails,
     patternType: 4,
+  },
+  // Home待機画面専用。黒と白のみの2色構成にするため、有機模様の背景シェーダーは
+  // 実質何も描かない（3色とも黒）にし、visualStyles/chronos.ts の白い線画だけで表現する。
+  chronos: {
+    colorA: hexToUnit("#000000"),
+    colorB: hexToUnit("#000000"),
+    colorC: hexToUnit("#000000"),
+    baseFreq: 1.0,
+    warpStrength: 0,
+    flowSpeed: 0,
+    storyPeriodSec: STORY_PERIOD_SEC.chronos,
+    patternType: 5,
   },
 };
 

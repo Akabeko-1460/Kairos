@@ -10,7 +10,7 @@
  * 共有する型とヘルパーだけを持つ。各スタイル固有のロジックはそれぞれのファイルに閉じている。
  */
 
-export type VisualStyleId = "lattice" | "network" | "flow" | "starfield" | "trails";
+export type VisualStyleId = "lattice" | "network" | "flow" | "starfield" | "trails" | "chronos";
 
 export interface Frame {
   ctx: CanvasRenderingContext2D;

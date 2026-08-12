@@ -147,10 +147,10 @@ export const starfieldStyle: VisualStyle<StarfieldState> = {
     // 月: 3つの同心円軌道を巡る。外側の軌道ほど公転周期を長くする（太陽系らしさ）
     const moons: MoonOrbit[] = Array.from({ length: 3 }, (_, i) => {
       const orbitRadiusRatio = 0.17 + i * 0.09 + rng() * 0.04;
-      const baseSpeed = 0.024 / (1 + i * 0.9); // 外側ほど遅い
+      const baseSpeed = 0.052 / (1 + i * 0.9); // 外側ほど遅い
       return {
         orbitRadiusRatio,
-        moonRadiusRatio: 0.06 + rng() * 0.03,
+        moonRadiusRatio: 0.11 + rng() * 0.05,
         angle0: rng() * Math.PI * 2,
         speed: baseSpeed * (0.75 + rng() * 0.5) * (rng() < 0.5 ? 1 : -1),
       };
@@ -163,13 +163,15 @@ export const starfieldStyle: VisualStyle<StarfieldState> = {
       angle0: rng() * Math.PI * 2,
       speed: ((0.0035 + rng() * 0.003) / (1 + i * 0.6)) * (rng() < 0.5 ? 1 : -1),
     }));
-    // 星座: 実在の星座の形（CONSTELLATION_SHAPES）を、夜空のあちこちに違う大きさ・向きで配置する
+    // 星座: 実在の星座の形（CONSTELLATION_SHAPES）を、夜空のあちこちに違う大きさ・向きで配置する。
+    // 形の種類は3つしかないが、数を増やす分は配置・向き・大きさを変えて巡回させる
+    // （全く同じ見た目の星座が2つ現れることはない）。
     const shapeOrder = [0, 1, 2].sort(() => rng() - 0.5);
-    const constellations: ConstellationGroup[] = Array.from({ length: 2 }, (_, i) => ({
-      shapeIndex: shapeOrder[i]!,
-      centerNx: 0.22 + rng() * 0.56,
-      centerNy: 0.16 + rng() * 0.45,
-      scale: 0.16 + rng() * 0.08,
+    const constellations: ConstellationGroup[] = Array.from({ length: 4 }, (_, i) => ({
+      shapeIndex: shapeOrder[i % shapeOrder.length]!,
+      centerNx: 0.18 + rng() * 0.64,
+      centerNy: 0.14 + rng() * 0.5,
+      scale: 0.1 + rng() * 0.05,
       baseRotation: rng() * Math.PI * 2,
       rotSpeed: (0.004 + rng() * 0.006) * (i % 2 === 0 ? 1 : -1),
     }));
@@ -193,25 +195,19 @@ export const starfieldStyle: VisualStyle<StarfieldState> = {
       ctx.fill();
     }
 
-    // 月: 画面中心という共通の「太陽」の周りを、3つの同心円軌道でゆっくり公転する
+    // 月: 画面中心という共通の「太陽」の周りを、3つの同心円軌道を公転する。
+    // 満ちた円盤ではなく、周りの線だけの円（軌道のような佇まい）にする。
     for (const moon of state.moons) {
       const angle = moon.angle0 + t * moon.speed;
       const x = cx + Math.cos(angle) * minDim * moon.orbitRadiusRatio;
       const y = cy + Math.sin(angle) * minDim * moon.orbitRadiusRatio * 0.6;
       const r = minDim * moon.moonRadiusRatio * (0.96 + amp * 0.05);
 
-      const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 2.4);
-      glow.addColorStop(0, rgba(rgb, (0.14 + amp * 0.04) * breath));
-      glow.addColorStop(1, rgba(rgb, 0));
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(x, y, r * 2.4, 0, Math.PI * 2);
-      ctx.fill();
-
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = rgba(rgb, (0.5 + amp * 0.1) * breath);
-      ctx.fill();
+      ctx.strokeStyle = rgba(rgb, (0.5 + amp * 0.1) * breath);
+      ctx.lineWidth = Math.max(1, minDim * 0.0018);
+      ctx.stroke();
     }
 
     // 円弧: 同じ中心を持つ、画面を横断するほど巨大な軌道の一部だけを描き、掃過させる。

@@ -4,7 +4,7 @@
  * 両レイヤーで完全に一致させることで、2つの描画技術が別々のエフェクトの重ね合わせではなく
  * 単一の作品として融合して見えるようにする。
  */
-export type StoryStyleId = "lattice" | "network" | "flow" | "starfield" | "trails";
+export type StoryStyleId = "lattice" | "network" | "flow" | "starfield" | "trails" | "chronos";
 
 export const STORY_PERIOD_SEC: Record<StoryStyleId, number> = {
   lattice: 21,
@@ -12,6 +12,7 @@ export const STORY_PERIOD_SEC: Record<StoryStyleId, number> = {
   flow: 24,
   starfield: 28,
   trails: 15,
+  chronos: 33,
 };
 
 const STORY_BASE = 0.62;
