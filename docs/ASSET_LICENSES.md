@@ -47,7 +47,8 @@ ADR-005）。
 | `audio/{study,work}/texture_pink*.wav`, `work/texture_room.wav` | Texture（ピンクノイズ / room） | 同上 | 権利者なし | ノイズ色は物理信号であり、文献が推奨する周波数特性（-3dB/オクターブ等）を精密に合成で制御する方が本来の効果を再現しやすいと判断し、意図的に合成のまま維持。`work/texture_room.wav` は ADR-007 で旧 `texture_hum.wav`（オフィス空調ハム）から「木質の部屋」を思わせる帯域ノイズに置き換えた |
 | `audio/move/texture_air_*.wav` | Texture（そよ風質感） | 同上 | 権利者なし | 実音源を探索したが、公開されている風の録音は強風（25m/s の暴風、台風接近など）しか見つからず、Move の「軽く開放的」という設計意図に合わなかったため見送り |
 | `audio/sleep/texture_brown_*.wav` | Texture（ブラウンノイズ） | 同上 | 権利者なし | 同上（ノイズ色は合成が適切という判断） |
-| `audio/{study,work,move}/pulse_*.wav` | Pulse（拍） | 同上 | 権利者なし | 特定のBPMにサンプル精度で同期させる必要があり、合成が確実 |
+| `audio/{study,work,move}/pulse_*.wav` | Pulse（打楽器的な拍） | 同上 | 権利者なし | 特定のBPMにサンプル精度で同期させる必要があり、合成が確実 |
+| `audio/{relax,sleep}/pulse_*.wav` | Pulse（柔らかい旋律アルペジオ） | 同上（`generateArpeggioPulse`、ADR-008） | 権利者なし | 「音楽性をある程度」持たせる要望に対し、スケール内の音程を辿るフレーズを生成。テーマの調に正確なピッチが必要なため合成 |
 | `ir/*.wav` | インパルス応答 | 同上（減衰ホワイトノイズによる合成IR） | 権利者なし | 本番は実測IR or 権利確認済みの公開IRライブラリに差し替える |
 
 ## 本番差し替え時のチェックリスト（docs/CLAUDE.md 禁止事項より）

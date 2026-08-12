@@ -407,6 +407,52 @@ function generateOneShot(freqHz, durationSec, decayRate, seed, opts = {}) {
   return peakNormalize(out, 0.7);
 }
 
+/**
+ * docs/03_ARCHITECTURE.md ADR-008: Relax/Sleep に「音楽性」を持たせるための柔らかい旋律パルス。
+ * Study/Work/Move の打楽器的なキック（generatePulse）とは異なり、スケール内の音程を辿る
+ * 短いフレーズをフェルトピアノ/マレット的な音色（generateOneShot と同じ倍音構成）で
+ * 繰り返しループする。文献（deep-research-report_relux_chatGPT.md）:
+ * 「反復性や予測可能性が高いリズムが安定感を高める」「60–80BPM程度の柔らかく単純な旋律」。
+ *
+ * @param {string} rootNote
+ * @param {(number|null)[]} semitonePattern 各拍のスケール度数（rootNoteからの半音オフセット）。
+ *   beats より短ければ繰り返す。null はその拍を休符にする（Sleep のように余白を持たせたい場合）。
+ * @param {number} bpm
+ * @param {number} beats
+ * @param {number} seed
+ * @param {{noteSec?: number, decayRate?: number, partialGains?: number[], shimmerGain?: number, gain?: number}} [opts]
+ */
+function generateArpeggioPulse(rootNote, semitonePattern, bpm, beats, seed, opts = {}) {
+  const {
+    noteSec = 1.6,
+    decayRate = 1.4,
+    partialGains = [1, 0.35, 0.12],
+    shimmerGain = 0.01,
+    gain = 0.55,
+  } = opts;
+  const rng = mulberry32(seed);
+  const root = noteFreq(rootNote);
+  const loopSeconds = (beats * 60) / bpm;
+  const n = Math.round(loopSeconds * SAMPLE_RATE);
+  const out = new Float32Array(n);
+  const beatSamples = Math.round((60 / bpm) * SAMPLE_RATE);
+  for (let beat = 0; beat < beats; beat++) {
+    const semi = semitonePattern[beat % semitonePattern.length];
+    if (semi === null || semi === undefined) continue; // 休符
+    const freq = root * 2 ** (semi / 12);
+    const detune = 1 + (rng() - 0.5) * 0.006;
+    const tone = add(...partialGains.map((g, idx) => scale(sine(freq * detune * (idx + 1), noteSec), g)));
+    const shimmer = scale(whiteNoise(rng, Math.round(noteSec * SAMPLE_RATE)), shimmerGain);
+    const env = exponentialDecayEnvelope(noteSec, SAMPLE_RATE, decayRate);
+    const note = multiply(add(tone, shimmer), env);
+    const start = beat * beatSamples;
+    for (let i = 0; i < note.length && start + i < n; i++) out[start + i] += note[i];
+  }
+  const normalized = peakNormalize(out, gain);
+  // 音の減衰テールがループ境界をまたぐため、通常の合成音より少し長めにクロスフェードしてなじませる。
+  return loopifyEqualPower(normalized, SAMPLE_RATE, Math.min(0.5, loopSeconds * 0.08));
+}
+
 function generateCue(freqHz, durationSec, seed) {
   return generateOneShot(freqHz, durationSec, 1.8, seed);
 }
@@ -487,21 +533,33 @@ async function main() {
   await saveWav("audio/move/cell_b4.wav", generateOneShot(noteFreq("b4"), 1.1, 3.2, 1333, movePluck));
   await saveWav("audio/move/cell_cs5.wav", generateOneShot(noteFreq("c#5"), 1.1, 3.2, 1334, movePluck));
 
-  console.log("Relax 層を生成中...（D lydian — 自然音＋開放感のある呼吸するパッド）");
+  console.log("Relax 層を生成中...（D lydian, 70bpm — 自然音＋開放感のある呼吸するパッド＋柔らかい旋律パルス）");
   await saveWav("audio/relax/pad_01.wav", generatePad("d4", [0, 4, 7, 11], 30, 1401));
   await saveWav("audio/relax/pad_02.wav", generatePad("d4", [0, 4, 11], 30, 1402));
   await saveWav("audio/relax/texture_rain.wav", generateTexture("rain", 24, 1411));
   await saveWav("audio/relax/texture_waves.wav", generateTexture("waves", 24, 1412));
+  // ADR-008: 「音楽性をある程度」持たせるための柔らかいアルペジオ（D Lydian、7拍で緩やかに山なりに登り降りる）。
+  const relaxArpeggioPattern = [0, 4, 7, 9, 7, 4, 2];
+  const relaxArpeggioOpts = { noteSec: 1.7, decayRate: 1.3, partialGains: [1, 0.35, 0.12], shimmerGain: 0.012, gain: 0.55 };
+  await saveWav("audio/relax/pulse_01.wav", generateArpeggioPulse("d4", relaxArpeggioPattern, 70, 7, 1431, relaxArpeggioOpts));
+  await saveWav("audio/relax/pulse_02.wav", generateArpeggioPulse("d4", relaxArpeggioPattern, 70, 7, 1432, relaxArpeggioOpts));
   await saveWav("audio/relax/cell_d4.wav", generateOneShot(noteFreq("d4"), 2.6, 0.9, 1421));
   await saveWav("audio/relax/cell_fs4.wav", generateOneShot(noteFreq("f#4"), 2.6, 0.9, 1422));
   await saveWav("audio/relax/cell_a4.wav", generateOneShot(noteFreq("a4"), 2.6, 0.9, 1423));
   await saveWav("audio/relax/cell_cs5.wav", generateOneShot(noteFreq("c#5"), 2.6, 0.9, 1424));
 
-  console.log("Sleep 層を生成中...（D aeolian・低い register — ブラウンノイズで深く鎮める）");
+  console.log("Sleep 層を生成中...（D aeolian・低い register, 60bpm — ブラウンノイズ＋入眠用の疎らな旋律パルス）");
   await saveWav("audio/sleep/pad_01.wav", generatePad("d3", [0, 3, 7], 30, 1501));
   await saveWav("audio/sleep/pad_02.wav", generatePad("d3", [0, 3, 10], 30, 1502));
   await saveWav("audio/sleep/texture_brown_a.wav", generateTexture("brown", 24, 1511));
   await saveWav("audio/sleep/texture_brown_b.wav", generateTexture("brown", 24, 1512));
+  // ADR-008: 入眠フェーズ（最初40分）だけに存在させる柔らかい旋律パルス。8拍中3拍しか鳴らさず
+  // 余白を持たせ（D Aeolian の短三和音 0,3,7）、Relax より低い register(d3)・長い減衰で
+  // 「そっと弾かれるフェルトピアノ」のような質感にする。40分以降は automation 側で 0 まで消す。
+  const sleepArpeggioPattern = [0, null, null, 3, null, null, 7, null];
+  const sleepArpeggioOpts = { noteSec: 2.6, decayRate: 0.9, partialGains: [1, 0.25, 0.08], shimmerGain: 0.006, gain: 0.42 };
+  await saveWav("audio/sleep/pulse_01.wav", generateArpeggioPulse("d3", sleepArpeggioPattern, 60, 8, 1531, sleepArpeggioOpts));
+  await saveWav("audio/sleep/pulse_02.wav", generateArpeggioPulse("d3", sleepArpeggioPattern, 60, 8, 1532, sleepArpeggioOpts));
   const sleepTone = { partialGains: [1, 0.2], shimmerGain: 0.005 };
   await saveWav("audio/sleep/cell_d3.wav", generateOneShot(noteFreq("d3"), 3.6, 0.6, 1521, sleepTone));
   await saveWav("audio/sleep/cell_f3.wav", generateOneShot(noteFreq("f3"), 3.6, 0.6, 1522, sleepTone));

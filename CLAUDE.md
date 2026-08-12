@@ -162,6 +162,16 @@
       （`pause()` と揃えた。Home/停止ボタンで音がすっと減衰して止まるようにする要望）。
       TopNav（Home/Pomodoro/Credit）のホバー時の文字まわりの発光を拡大・強化
       （広がり幅・ぼかし半径・最大不透明度をいずれも底上げ）。
+      **rev.3.6**: `deep-research-report_relux_chatGPT.md` を踏まえ Relax/Sleep を全面
+      再構築（`docs/03_ARCHITECTURE.md` ADR-008）。両テーマに「音楽性をある程度」持たせる
+      ため、打楽器的キックとは別の柔らかい旋律アルペジオを奏でる `generateArpeggioPulse`
+      を新設し、pulse レイヤーとして追加（Relax: D Lydian 70bpm、Sleep: D Aeolian低音域
+      60bpmで8拍中3拍のみ）。Sleep は「最初40分=入眠用、以降=深い睡眠用」という要望に対し、
+      文献の核心的な知見（継続的なノイズがREM睡眠を短縮しうる）を踏まえ「別の音に切り替える」
+      のではなく「刺激を段階的に減らし静寂へ近づける」設計にした。Home のフリー再生は
+      Sleep のときだけ実経過時間で t を進めるようにし（100分を仮想セッション長とし、
+      40分がt=0.4に一致）、一晩中つけっぱなしにする使い方でも実時間で機能する
+      （`apps/web/lib/soundscapeRuntime.ts`）。
       未着手: フェーズ切替時の背景色4秒補間（`docs/02_SPEC.md` §6.3）、
       Pad の実音源化（A/D/E キーに合う安定したドローン録音の追加探索）
 - [ ] Phase 2: 生成エンジン本体（LoopManager のテイクローテーション、AI生成の本番素材への差し替え、実聴での音作り）

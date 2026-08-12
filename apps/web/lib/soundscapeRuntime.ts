@@ -17,8 +17,18 @@ const CROSSFADE_SEC = 6;
 /**
  * Home画面のフリー再生は特定のセッション長を持たないため、Sustain区間中央付近の t に固定して
  * 鳴らし続ける（docs/04_SOUND_ENGINE.md §4 の Ease-in/Sustain/Taper/Wind-down のうち Sustain のみを使う）。
+ * Sleep だけは例外（下記 SLEEP_VIRTUAL_DURATION_SEC 参照）。
  */
 const FREEPLAY_T = 0.45;
+
+/**
+ * docs/03_ARCHITECTURE.md ADR-008: Sleep のフリー再生（Home画面で夜通し流すことを想定）だけは
+ * 経過時間で t を進める。「最初40分は入眠用、以降は深い睡眠を守るための静かな音」という
+ * フェーズ設計を実時間で成立させるため、40分がテーマの t=0.4 に一致するよう
+ * 100分（6000秒）を仮想セッション長とする。バックグラウンドタブでこのインターバルの発火間隔が
+ * 間延びしても、実時刻の差分を積算するので進み方はずれない。
+ */
+const SLEEP_VIRTUAL_DURATION_SEC = 100 * 60;
 
 /** Pomodoro の Break フェーズで鳴らすテーマは固定（ユーザー選択不可）。短い休憩は Relax、
  *  長い休憩はより深く鎮める Sleep にする — docs/04_SOUND_ENGINE.md ADR-004。 */
@@ -75,6 +85,9 @@ let loopStarted = false;
 let currentThemeIdRef: ThemeId | null = null;
 let transitionArmed = false;
 let wasPaused = false;
+// Sleep のフリー再生専用の経過時間トラッカー（ADR-008）。playFreeplay("sleep") で 0 にリセットする。
+let freeplaySleepElapsedSec = 0;
+let freeplaySleepLastTickAtMs: number | null = null;
 
 export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) => {
   function startLoopOnce(): void {
@@ -141,7 +154,24 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
       }
 
       if (mode === "freeplay") {
-        if (get().freeplayPlaying) engine.tick(FREEPLAY_T);
+        if (get().freeplayPlaying) {
+          if (get().freeplayThemeId === "sleep") {
+            // ADR-008: 実経過時間を積算して t を進める。バックグラウンドタブでこの
+            // setInterval 自体の発火が間引かれても、Date.now() の差分を足すので
+            // （固定の 0.1秒を毎回足すのと違い）実時間からズレない。
+            const now = Date.now();
+            if (freeplaySleepLastTickAtMs !== null) {
+              freeplaySleepElapsedSec += (now - freeplaySleepLastTickAtMs) / 1000;
+            }
+            freeplaySleepLastTickAtMs = now;
+            engine.tick(Math.min(1, freeplaySleepElapsedSec / SLEEP_VIRTUAL_DURATION_SEC));
+          } else {
+            freeplaySleepLastTickAtMs = null;
+            engine.tick(FREEPLAY_T);
+          }
+        } else {
+          freeplaySleepLastTickAtMs = null; // 一時停止中は経過時間を進めない
+        }
         set({ debugInfo: engine.getDebugInfo() });
         return;
       }
@@ -184,6 +214,10 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     playFreeplay: async (themeId) => {
       const e = await get().ensureEngine();
       set({ mode: "freeplay", freeplayThemeId: themeId, freeplayPlaying: true });
+      // 新しく再生を始めるたびに「入眠しなおす」ものとして経過時間をリセットする
+      // （テーマの切り替えでも、Sleep をもう一度選び直した場合でも同様）。
+      freeplaySleepElapsedSec = 0;
+      freeplaySleepLastTickAtMs = null;
       try {
         // begin() は currentGraph が既にあれば自動でクロスフェードに切り替える。
         await e.begin(themeId, Date.now());
@@ -220,6 +254,8 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
       set({ mode: "idle", freeplayThemeId: null, freeplayPlaying: false });
       void e.stop().catch(logEngineError);
       currentThemeIdRef = null;
+      freeplaySleepElapsedSec = 0;
+      freeplaySleepLastTickAtMs = null;
     },
 
     setMasterVolume: (v) => {
