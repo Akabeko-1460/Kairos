@@ -20,6 +20,7 @@ export interface PomodoroPreset {
 
 const MINUTE_MS = 60_000;
 
+/** アプリ起動時の既定プリセット。25分Focus / 5分Break。 */
 export const CLASSIC_PRESET: PomodoroPreset = {
   id: "classic",
   label: "25 / 5",
@@ -38,7 +39,7 @@ export const DEEP_PRESET: PomodoroPreset = {
   roundsBeforeLongBreak: 4,
 };
 
-export const PRESETS: Readonly<Record<"classic" | "deep", PomodoroPreset>> = {
+export const PRESETS: Readonly<Record<BuiltinPresetId, PomodoroPreset>> = {
   classic: CLASSIC_PRESET,
   deep: DEEP_PRESET,
 };

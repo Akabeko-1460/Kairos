@@ -5,8 +5,8 @@ import { useSoundscapeRuntime } from "@/lib/soundscapeRuntime";
 /** Home 画面用の薄いフック。エンジン本体は lib/soundscapeRuntime.ts のシングルトン。 */
 export function useFreeplay() {
   const engineReady = useSoundscapeRuntime((s) => s.engineReady);
-  const freeplayPhase = useSoundscapeRuntime((s) => s.freeplayPhase);
-  const freeplayCategoryId = useSoundscapeRuntime((s) => s.freeplayCategoryId);
+  const debugInfo = useSoundscapeRuntime((s) => s.debugInfo);
+  const freeplayThemeId = useSoundscapeRuntime((s) => s.freeplayThemeId);
   const freeplayPlaying = useSoundscapeRuntime((s) => s.freeplayPlaying);
   const mode = useSoundscapeRuntime((s) => s.mode);
   const ensureEngine = useSoundscapeRuntime((s) => s.ensureEngine);
@@ -19,8 +19,8 @@ export function useFreeplay() {
 
   return {
     engineReady,
-    freeplayPhase,
-    freeplayCategoryId,
+    debugInfo,
+    freeplayThemeId,
     freeplayPlaying,
     mode,
     ensureEngine,

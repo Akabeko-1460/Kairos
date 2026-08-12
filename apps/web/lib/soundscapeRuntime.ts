@@ -1,10 +1,16 @@
 "use client";
 
 import {
+  NEUTRAL_ENVIRONMENT,
   RECOMMENDED_TRANSITION_T,
+  smoothEnvironment,
   SoundscapeEngine,
-  type EnginePhase,
+  targetEnvironmentModifier,
+  timeOfDayFor,
+  type EnvironmentModifier,
   type SoundPack,
+  type ThemeId,
+  type WeatherCategory,
 } from "@kairos/audio-engine";
 import {
   isPaused,
@@ -16,20 +22,43 @@ import {
 } from "@kairos/core";
 import { create } from "zustand";
 import { useTimerStore } from "@/hooks/useTimer";
+import { fetchWeatherCategory } from "@/lib/environment";
 
 const TICK_INTERVAL_MS = 100; // 10Hz。docs/03_ARCHITECTURE.md の useTimer -> SoundscapeEngine 結合点。
 const CROSSFADE_SEC = 6;
 /**
  * Home画面のフリー再生は特定のセッション長を持たないため、Sustain区間中央付近の t に固定して
  * 鳴らし続ける（docs/04_SOUND_ENGINE.md §4 の Ease-in/Sustain/Taper/Wind-down のうち Sustain のみを使う）。
+ * Sleep だけは例外（下記 SLEEP_VIRTUAL_DURATION_SEC 参照）。
  */
 const FREEPLAY_T = 0.45;
+
+/**
+ * docs/03_ARCHITECTURE.md ADR-008: Sleep のフリー再生（Home画面で夜通し流すことを想定）だけは
+ * 経過時間で t を進める。「最初40分は入眠用、以降は深い睡眠を守るための静かな音」という
+ * フェーズ設計を実時間で成立させるため、40分がテーマの t=0.4 に一致するよう
+ * 100分（6000秒）を仮想セッション長とする。バックグラウンドタブでこのインターバルの発火間隔が
+ * 間延びしても、実時刻の差分を積算するので進み方はずれない。
+ */
+const SLEEP_VIRTUAL_DURATION_SEC = 100 * 60;
+
+/** Pomodoro の Break フェーズで鳴らすテーマは固定（ユーザー選択不可）。短い休憩は Relax、
+ *  長い休憩はより深く鎮める Sleep にする — docs/04_SOUND_ENGINE.md ADR-004。 */
+const SHORT_BREAK_THEME: ThemeId = "relax";
+const LONG_BREAK_THEME: ThemeId = "sleep";
 
 export type PlaybackMode = "idle" | "freeplay" | "timer";
 export type EngineDebugInfo = ReturnType<SoundscapeEngine["getDebugInfo"]>;
 
-function toEnginePhase(phase: TimerState["phase"]): EnginePhase | null {
-  if (phase === "focus" || phase === "shortBreak" || phase === "longBreak") return phase;
+/**
+ * タイマーの現在フェーズと、ユーザーが選んだ Focus テーマから、鳴らすべきテーマを1つに決める
+ * 純粋関数。Focus フェーズ中に focusThemeId が変わった場合もこの関数の戻り値が変わるので、
+ * 呼び出し側は「前回と違う値になったらクロスフェード」という単純な比較だけで済む。
+ */
+function themeIdForTimerPhase(phase: TimerState["phase"], focusThemeId: ThemeId): ThemeId | null {
+  if (phase === "focus") return focusThemeId;
+  if (phase === "shortBreak") return SHORT_BREAK_THEME;
+  if (phase === "longBreak") return LONG_BREAK_THEME;
   return null;
 }
 
@@ -41,14 +70,10 @@ interface SoundscapeRuntimeStore {
   engineReady: boolean;
   debugInfo: EngineDebugInfo;
   mode: PlaybackMode;
-  freeplayPhase: EnginePhase | null;
-  /**
-   * Home 画面に表示される5カテゴリ（Study/Work/Relax/Sleep/Move）はUI上は別物だが、
-   * 現状のサウンドパックは focus/break の2種類しか実体を持たない。どのカテゴリが選ばれているかは
-   * ここで別管理し、freeplayPhase は「どの音響エンジンを鳴らすか」だけを表す。
-   */
-  freeplayCategoryId: string | null;
+  freeplayThemeId: ThemeId | null;
   freeplayPlaying: boolean;
+  /** Pomodoro の Focus フェーズで鳴らす/描くサウンドテーマ。デフォルトは "Study"。 */
+  focusThemeId: ThemeId;
   /**
    * マスター音量。Home/Pomodoro どちらの音量バーからも同じ値を読み書きする
    * （エンジンはページを跨いだシングルトンなので、音量もページ間で共有するのが自然）。
@@ -58,7 +83,8 @@ interface SoundscapeRuntimeStore {
   ensureEngine: () => Promise<SoundscapeEngine>;
   /** Pomodoro 画面が Start されたら呼ぶ。以後このループがタイマー駆動でエンジンを制御する。 */
   switchToTimerMode: () => void;
-  playFreeplay: (categoryId: string, phase: EnginePhase) => Promise<void>;
+  setFocusThemeId: (id: ThemeId) => void;
+  playFreeplay: (themeId: ThemeId) => Promise<void>;
   toggleFreeplayPause: () => void;
   regenerateFreeplay: () => void;
   stopFreeplay: () => void;
@@ -67,10 +93,77 @@ interface SoundscapeRuntimeStore {
 
 // このモジュールを跨いだ再インポートでも二重初期化しないよう、状態はモジュールスコープに持つ。
 let engine: SoundscapeEngine | null = null;
+// ensureEngine() の呼び出しが重なった際に AudioContext / SoundscapeEngine を複数生成しない
+// ようにする in-flight Promise キャッシュ（下記 ensureEngine 参照）。
+let engineInitPromise: Promise<SoundscapeEngine> | null = null;
 let loopStarted = false;
-let enginePhaseRef: EnginePhase | null = null;
+let currentThemeIdRef: ThemeId | null = null;
+// playFreeplay() の重複呼び出し（SOUND選択クリックと設定画面プレビューeffectがほぼ同時に
+// 同じテーマを要求する等）で begin()/transitionTo() を二重に走らせないための in-flight ガード。
+// これが無いと、本来3秒かけて滑らかに変わるはずのクロスフェードが数百ms差で2つ重なり、
+// 「ゆっくり変わる」はずが唐突に音が変わったように聞こえてしまう（下記 playFreeplay 参照）。
+let pendingFreeplayThemeId: ThemeId | null = null;
 let transitionArmed = false;
 let wasPaused = false;
+// Sleep のフリー再生専用の経過時間トラッカー（ADR-008）。playFreeplay("sleep") で 0 にリセットする。
+let freeplaySleepElapsedSec = 0;
+let freeplaySleepLastTickAtMs: number | null = null;
+
+// --- 天気・時間帯・経過時間による環境モジュレーション（ADR-010） ---
+const WEATHER_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30分ごとに再取得すれば十分（天気は数分単位では変わらない）
+let currentWeather: WeatherCategory | null = null;
+let weatherFetchedAtMs: number | null = null;
+let weatherFetchInFlight = false;
+/** 音を鳴らし始めてからの実時間の起点。Pomodoroのフェーズをまたいでも積算し続け、完全に停止したらリセットする。 */
+let environmentSessionStartedAtMs: number | null = null;
+let smoothedEnvironment: EnvironmentModifier = NEUTRAL_ENVIRONMENT;
+let environmentLastTickAtMs: number | null = null;
+
+function ensureWeatherFresh(): void {
+  const now = Date.now();
+  if (weatherFetchInFlight) return;
+  if (weatherFetchedAtMs !== null && now - weatherFetchedAtMs < WEATHER_REFRESH_INTERVAL_MS) return;
+  weatherFetchInFlight = true;
+  weatherFetchedAtMs = now; // フェッチ中に再度呼ばれても二重発火しないよう先に更新しておく
+  void fetchWeatherCategory()
+    .then((category) => {
+      currentWeather = category;
+    })
+    .finally(() => {
+      weatherFetchInFlight = false;
+    });
+}
+
+function ensureEnvironmentSessionStarted(): void {
+  if (environmentSessionStartedAtMs === null) environmentSessionStartedAtMs = Date.now();
+}
+
+function resetEnvironmentSession(): void {
+  environmentSessionStartedAtMs = null;
+  smoothedEnvironment = NEUTRAL_ENVIRONMENT;
+  environmentLastTickAtMs = null;
+}
+
+/**
+ * 毎ティック呼ぶ。天気の鮮度確認、目標値の算出、なだらかな追従（smoothEnvironment）までを行う。
+ * 「ゆっくりなだらかに切り替える」の実体はここ — 天気や時間帯が変わっても瞬時には動かない。
+ */
+function tickEnvironment(): EnvironmentModifier {
+  ensureWeatherFresh();
+  const now = Date.now();
+  const dtSec = environmentLastTickAtMs === null ? 0 : (now - environmentLastTickAtMs) / 1000;
+  environmentLastTickAtMs = now;
+
+  const sessionElapsedSec =
+    environmentSessionStartedAtMs === null ? 0 : (now - environmentSessionStartedAtMs) / 1000;
+  const target = targetEnvironmentModifier({
+    weather: currentWeather,
+    timeOfDay: timeOfDayFor(new Date(now)),
+    sessionElapsedSec,
+  });
+  smoothedEnvironment = smoothEnvironment(smoothedEnvironment, target, dtSec);
+  return smoothedEnvironment;
+}
 
 export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) => {
   function startLoopOnce(): void {
@@ -93,50 +186,76 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
           else void engine.resume().catch(logEngineError);
         }
 
-        const enginePhase = toEnginePhase(state.phase);
-        if (!enginePhase) {
-          if (enginePhaseRef !== null) void engine.stop().catch(logEngineError);
-          enginePhaseRef = null;
+        const themeId = themeIdForTimerPhase(state.phase, get().focusThemeId);
+        if (!themeId) {
+          if (currentThemeIdRef !== null) void engine.stop().catch(logEngineError);
+          currentThemeIdRef = null;
           transitionArmed = false;
+          resetEnvironmentSession();
           set({ debugInfo: engine.getDebugInfo() });
           return;
         }
 
-        // フェーズが実際に切り替わった（初回開始・Skip・早期トリガーの取りこぼしからの復帰、
-        // すべてこの1箇所で処理する。ここを素通りさせるとBGMが切り替わらないバグになる）。
-        if (enginePhase !== enginePhaseRef) {
-          const isFirstPhase = enginePhaseRef === null;
-          enginePhaseRef = enginePhase;
+        // テーマが実際に切り替わった（フェーズ遷移・Skip・早期トリガーの取りこぼしからの復帰・
+        // Focus 中の手動テーマ変更、すべてこの1箇所で処理する。ここを素通りさせるとBGMが
+        // 切り替わらないバグになる）。
+        if (themeId !== currentThemeIdRef) {
+          const isFirstTheme = currentThemeIdRef === null;
+          currentThemeIdRef = themeId;
           transitionArmed = false;
-          if (isFirstPhase) void engine.begin(enginePhase, state.sessionSeed).catch(logEngineError);
-          else void engine.transitionTo(enginePhase, state.sessionSeed, CROSSFADE_SEC).catch(logEngineError);
+          if (isFirstTheme) {
+            ensureEnvironmentSessionStarted();
+            void engine.begin(themeId, state.sessionSeed).catch(logEngineError);
+          } else {
+            void engine.transitionTo(themeId, state.sessionSeed, CROSSFADE_SEC).catch(logEngineError);
+          }
           set({ debugInfo: engine.getDebugInfo() });
           return;
         }
 
         if (!isRunning(state)) {
+          environmentLastTickAtMs = null; // 一時停止中はdtを積算せず、再開時に大きな飛びが出ないようにする
           set({ debugInfo: engine.getDebugInfo() });
           return;
         }
 
         const t = progress(state, now);
-        engine.tick(t);
+        engine.tick(t, tickEnvironment());
         set({ debugInfo: engine.getDebugInfo() });
 
         if (!transitionArmed && t >= RECOMMENDED_TRANSITION_T) {
           transitionArmed = true;
           const peeked = peekSkip(state, now);
-          const nextEnginePhase = toEnginePhase(peeked.phase);
-          if (nextEnginePhase) {
-            void engine.transitionTo(nextEnginePhase, peeked.sessionSeed, CROSSFADE_SEC).catch(logEngineError);
-            enginePhaseRef = nextEnginePhase;
+          const nextThemeId = themeIdForTimerPhase(peeked.phase, get().focusThemeId);
+          if (nextThemeId) {
+            void engine.transitionTo(nextThemeId, peeked.sessionSeed, CROSSFADE_SEC).catch(logEngineError);
+            currentThemeIdRef = nextThemeId;
           }
         }
         return;
       }
 
       if (mode === "freeplay") {
-        if (get().freeplayPlaying) engine.tick(FREEPLAY_T);
+        if (get().freeplayPlaying) {
+          const environment = tickEnvironment();
+          if (get().freeplayThemeId === "sleep") {
+            // ADR-008: 実経過時間を積算して t を進める。バックグラウンドタブでこの
+            // setInterval 自体の発火が間引かれても、Date.now() の差分を足すので
+            // （固定の 0.1秒を毎回足すのと違い）実時間からズレない。
+            const now = Date.now();
+            if (freeplaySleepLastTickAtMs !== null) {
+              freeplaySleepElapsedSec += (now - freeplaySleepLastTickAtMs) / 1000;
+            }
+            freeplaySleepLastTickAtMs = now;
+            engine.tick(Math.min(1, freeplaySleepElapsedSec / SLEEP_VIRTUAL_DURATION_SEC), environment);
+          } else {
+            freeplaySleepLastTickAtMs = null;
+            engine.tick(FREEPLAY_T, environment);
+          }
+        } else {
+          freeplaySleepLastTickAtMs = null; // 一時停止中は経過時間を進めない
+          environmentLastTickAtMs = null; // 一時停止中はdtを積算せず、再開時に大きな飛びが出ないようにする
+        }
         set({ debugInfo: engine.getDebugInfo() });
         return;
       }
@@ -149,40 +268,75 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     engineReady: false,
     debugInfo: null,
     mode: "idle",
-    freeplayPhase: null,
-    freeplayCategoryId: null,
+    freeplayThemeId: null,
     freeplayPlaying: false,
+    focusThemeId: "study",
     masterVolume: 0.8,
 
     ensureEngine: async () => {
       if (engine) return engine;
-      const created = new SoundscapeEngine();
-      await created.init();
-      const res = await fetch("/packs.json");
-      const { packs } = (await res.json()) as { packs: SoundPack[] };
-      const pack = packs[0];
-      if (!pack) throw new Error("packs.json に SoundPack が1つも定義されていません。");
-      await created.loadPack(pack);
-      // Start前・Pomodoro開始前に音量バーが操作されている場合があるので、
-      // エンジン生成のタイミングでその時点のマスター音量を適用する。
-      created.setMasterVolume(get().masterVolume);
-      engine = created;
-      set({ engineReady: true });
-      startLoopOnce();
-      return created;
+      // 呼び出し元が複数ある（TopNav の先取り初期化、各ページの自動プレビュー等）ため、
+      // 初期化が完了する前に ensureEngine() が重ねて呼ばれることが普通に起こる。
+      // in-flight の Promise を共有せずに `if (engine) return engine` だけに頼ると、
+      // まだ engine が代入されていない間は毎回ガードを素通りしてしまい、
+      // AudioContext / SoundscapeEngine が複数生成される競合状態になる
+      // （最後に完了した方だけが engine 変数を勝ち取り、先に作られた方は
+      // 誰にも参照されないまま鳴らないインスタンスとして残ってしまう ＝ 「音が鳴らない」バグの実体）。
+      // そのため in-flight の Promise 自体をキャッシュし、後続の呼び出しは全員それに相乗りさせる。
+      if (!engineInitPromise) {
+        engineInitPromise = (async () => {
+          const created = new SoundscapeEngine();
+          await created.init();
+          const res = await fetch("/packs.json");
+          const { packs } = (await res.json()) as { packs: SoundPack[] };
+          const pack = packs[0];
+          if (!pack) throw new Error("packs.json に SoundPack が1つも定義されていません。");
+          await created.loadPack(pack);
+          // Start前・Pomodoro開始前に音量バーが操作されている場合があるので、
+          // エンジン生成のタイミングでその時点のマスター音量を適用する。
+          created.setMasterVolume(get().masterVolume);
+          engine = created;
+          set({ engineReady: true });
+          startLoopOnce();
+          return created;
+        })().finally(() => {
+          engineInitPromise = null;
+        });
+      }
+      return engineInitPromise;
     },
 
     switchToTimerMode: () => set({ mode: "timer" }),
 
-    playFreeplay: async (categoryId, phase) => {
+    setFocusThemeId: (id) => set({ focusThemeId: id }),
+
+    playFreeplay: async (themeId) => {
+      // 同じテーマへの重複呼び出し（SOUND選択のクリックと設定画面プレビューeffectがほぼ
+      // 同時に同じテーマを要求する等）で begin()/transitionTo() を二重に走らせない。
+      // 二重に走ると、本来3秒かけて滑らかに変わるはずのクロスフェードが数百ms差で重なり、
+      // 「ゆっくり変わる」はずが唐突に音が変わったように聞こえてしまう。既に同じテーマへ
+      // 向かっている/到達済みなら、実際の再生要求は送らず状態フラグだけ揃えて抜ける。
+      if (pendingFreeplayThemeId === themeId) {
+        set({ mode: "freeplay", freeplayThemeId: themeId, freeplayPlaying: true });
+        return;
+      }
+      pendingFreeplayThemeId = themeId;
       const e = await get().ensureEngine();
-      set({ mode: "freeplay", freeplayPhase: phase, freeplayCategoryId: categoryId, freeplayPlaying: true });
+      set({ mode: "freeplay", freeplayThemeId: themeId, freeplayPlaying: true });
+      // 新しく再生を始めるたびに「入眠しなおす」ものとして経過時間をリセットする
+      // （テーマの切り替えでも、Sleep をもう一度選び直した場合でも同様）。
+      freeplaySleepElapsedSec = 0;
+      freeplaySleepLastTickAtMs = null;
+      // ADR-010: こちらは「音を鳴らし始めてからの経過時間」軸のセッション開始。テーマの
+      // 切り替え（Study→Work等）では継続して積算したいので、既に始まっていればリセットしない。
+      ensureEnvironmentSessionStarted();
       try {
         // begin() は currentGraph が既にあれば自動でクロスフェードに切り替える。
-        await e.begin(phase, Date.now());
-        enginePhaseRef = phase;
+        await e.begin(themeId, Date.now());
+        currentThemeIdRef = themeId;
       } catch (err) {
         logEngineError(err);
+        pendingFreeplayThemeId = null; // 失敗時は再試行できるようにする
       }
     },
 
@@ -197,12 +351,12 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
 
     regenerateFreeplay: () => {
       const e = engine;
-      const phase = get().freeplayPhase;
-      if (!e || !phase) return;
+      const themeId = get().freeplayThemeId;
+      if (!e || !themeId) return;
       void e
-        .transitionTo(phase, Date.now(), CROSSFADE_SEC)
+        .transitionTo(themeId, Date.now(), CROSSFADE_SEC)
         .then(() => {
-          enginePhaseRef = phase;
+          currentThemeIdRef = themeId;
         })
         .catch(logEngineError);
     },
@@ -210,9 +364,13 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     stopFreeplay: () => {
       const e = engine;
       if (!e) return;
-      set({ mode: "idle", freeplayPhase: null, freeplayCategoryId: null, freeplayPlaying: false });
+      set({ mode: "idle", freeplayThemeId: null, freeplayPlaying: false });
       void e.stop().catch(logEngineError);
-      enginePhaseRef = null;
+      currentThemeIdRef = null;
+      pendingFreeplayThemeId = null;
+      freeplaySleepElapsedSec = 0;
+      freeplaySleepLastTickAtMs = null;
+      resetEnvironmentSession();
     },
 
     setMasterVolume: (v) => {

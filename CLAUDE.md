@@ -122,10 +122,174 @@
       Credit（説明・参考文献）の3タブ構成に拡張し、カスタムプリセット（作成・右クリック削除）も
       追加済み。エンジンはページ遷移をまたいで単一の AudioContext を共有するシングルトン設計
       （`apps/web/lib/soundscapeRuntime.ts`）。Break フェーズで無音になるバグ（フェーズ変化検出後に
-      実際の遷移呼び出しを忘れていた）を発見・修正済み。未着手: フェーズ切替時の背景色4秒補間
-      （`docs/02_SPEC.md` §6.3）、Home画面の追加サウンドパック（現状 Focus/Break の2種のみで、
-      他は鍵アイコンのプレースホルダー）
-- [ ] Phase 2: 生成エンジン本体（LoopManager のテイクローテーション、AI生成の本番素材、実聴での音作り）
+      実際の遷移呼び出しを忘れていた）を発見・修正済み。
+      **rev.3（本セッション）**: `docs/deep-research-report_chatGPT.md` /
+      `集中力を高める音の文献調査_gemini.md` の文献調査をもとに、サウンドを「フェーズ(focus/break)」
+      単位から「テーマ(5種)」単位に再構築（`docs/03_ARCHITECTURE.md` ADR-004）。Study/Work/Move/
+      Relax/Sleep が音響的にも完全に別物になった（Home の選択にも Pomodoro の Focus テーマ選択にも
+      実際に反映される。旧: 見た目の色だけが違って音は同一という状態だった）。ノイズ色を
+      ピンク/ブラウン/エアで使い分け、テーマごとに専用の scale/bpm/automation/IR を持つ。
+      **rev.3.1**: 全テーマの音量を一律 -15% 下げ、texture/cue/cell を Wikimedia Commons の
+      実音源（雨・波の録音、鐘・鈴・カリンバの単音演奏）に差し替えた
+      （加工記録: `packages/audio-engine/tools/process-real-audio.mjs`、
+      出所・ライセンスは `docs/ASSET_LICENSES.md`、CC BY/CC BY-SA のクレジットは
+      `apps/web/app/credit` に掲載済み）。Pad（和声の土台）とノイズ色（ピンク/ブラウン/エア）・
+      Pulse は、テーマの調に正確なピッチの実音源が見つからなかった／精密な周波数特性の制御が
+      必要という理由で意図的に合成のまま維持（理由は `docs/ASSET_LICENSES.md` に記載）。
+      **rev.3.2**: `endel.io/science` と Haruvi et al. 2022（PMC8829886）を追加参照し、
+      「集中力を上げる」だけでなく「聞きよい（restorative）」方向へ最終調整
+      （`docs/03_ARCHITECTURE.md` ADR-005）。Cell の定位幅・音量をさらに絞り、実音源の
+      フェードを柔らかく、硬質な学校鐘の音に軽いローパスをかけて丸めた。Move のテンポを
+      112→120bpm（安静時心拍よりやや速い、という具体的数値提示に合わせる）に、
+      Move/Relax の Cell 発火頻度をやや下げた。
+      **rev.3.3**: 「集中力を上げる効果は維持しつつBGM性・音楽性を足す」ため、実装前に
+      音楽理論・認知科学文献を調査した上で2点を追加（`docs/03_ARCHITECTURE.md` ADR-006）。
+      (1) Pad層: 全テイクを同時ループ再生し、周期の異なるLFO（Eno の "Music for Airports"
+      由来のテープループ・フェイジング技法）で音量ブレンドをドリフトさせ、離散的な
+      「コードチェンジ」なしに和声/音色がゆったり変化するようにした
+      （`PhaseGraph.addPadEnsemble`、`phase-graph.offline.test.ts` で実地検証済み）。
+      (2) Pulse層: 固定周波数クリックをピッチドロップ式のキックドラム合成に変更し、
+      Work/Move にはオフビートのハイハットを追加（Study は複雑思考向けのため追加せず）。
+      **rev.3.4**: Study（読書・参考書での学習）と Work（PC作業・仕事、および作曲/ライティング
+      などの創造的作業）の用途差をユーザーから明確化され、それぞれをブラッシュアップした
+      （`docs/03_ARCHITECTURE.md` ADR-007）。Study はピンクノイズと`lowPassHz`をさらに
+      暖色化（低覚醒・図書室的な質感）。Work は Endel の "Deep Work"（弦楽器/鍵盤/木質音・
+      没入感のあるハーモニー）を参考に Pad へ木質ボディ共鳴を付与し、texture を
+      "hum"→"room"（木質の部屋）へ、reverbWet を増やして没入感を、一方でハイハット/
+      Cell密度は控えめにした（作曲・ライティングは言語/音楽処理そのものであり、装飾音の
+      主張が強いと自分の思考と競合するため）。
+      **rev.3.5**: `SoundscapeEngine.stop()` の既定フェードアウトを 1.0秒→0.4秒に変更
+      （`pause()` と揃えた。Home/停止ボタンで音がすっと減衰して止まるようにする要望）。
+      TopNav（Home/Pomodoro/Credit）のホバー時の文字まわりの発光を拡大・強化
+      （広がり幅・ぼかし半径・最大不透明度をいずれも底上げ）。
+      **rev.3.6**: `deep-research-report_relux_chatGPT.md` を踏まえ Relax/Sleep を全面
+      再構築（`docs/03_ARCHITECTURE.md` ADR-008）。両テーマに「音楽性をある程度」持たせる
+      ため、打楽器的キックとは別の柔らかい旋律アルペジオを奏でる `generateArpeggioPulse`
+      を新設し、pulse レイヤーとして追加（Relax: D Lydian 70bpm、Sleep: D Aeolian低音域
+      60bpmで8拍中3拍のみ）。Sleep は「最初40分=入眠用、以降=深い睡眠用」という要望に対し、
+      文献の核心的な知見（継続的なノイズがREM睡眠を短縮しうる）を踏まえ「別の音に切り替える」
+      のではなく「刺激を段階的に減らし静寂へ近づける」設計にした。Home のフリー再生は
+      Sleep のときだけ実経過時間で t を進めるようにし（100分を仮想セッション長とし、
+      40分がt=0.4に一致）、一晩中つけっぱなしにする使い方でも実時間で機能する
+      （`apps/web/lib/soundscapeRuntime.ts`）。
+      **rev.4**: ユーザーから「Study/Workの違いが分からない」「Moveは筋トレ・運動用でもっと
+      別物のリズミカルな音にすべき」「Relaxのずっと上下する反響音が不快」という3つの指摘を受け、
+      「今までの音は考慮せず」5テーマ全てを Endel の公開設計方針（endel.io/science,
+      endel.io/focus, endel.io/activity, endel.io/relax）に基づいて再設計した
+      （`docs/03_ARCHITECTURE.md` ADR-009）。Study は Study/Work/Move の中で唯一「拍」を
+      持たないテーマに変更（Pulse は8拍に1音だけの疎らな一音）。Work は逆に規則的な拍を
+      明確に採用し、キック+ハイハットに短いコンピング動機（`generateGroovePulse`、新設）を
+      重ねた。Move は弧の構造自体を作り替え、ほぼ即座にフルゲインで始まり、キック+スネア+
+      ハイハットの実際のドラムパターン（`generateWorkoutGroove`、新設）と拍同期でポンピングする
+      Pad（`generatePad` の `pumpBpm`、新設）を持つ、他とは明確に別物のリズミカルな音にした
+      （128bpmに変更）。Relaxの不快感はコード調査の結果、`phase-graph.ts` の Pad Ensemble
+      LFO（ADR-006）の深さが過大だったことが根本原因と判明し、`PAD_DRIFT_DEPTH` を
+      0.45→0.18に縮小（全テーマに影響する修正）。あわせて `PhaseAutomation` の
+      `breathLfoHz`/`breathDepth` は実装されていない死んだフィールドだったため削除した。
+      **rev.5**: 「Endelのように状況に合わせて音が変化するようにしたい」という要望を受け、
+      天気・時間帯（朝/昼/晩）・音を流している経過時間の3軸で各テーマの音に控えめな補正を
+      かける仕組みを実装した（`docs/03_ARCHITECTURE.md` ADR-010）。天気はブラウザの
+      Geolocation API + Open-Meteo（APIキー不要の無料天気API）で取得し、失敗時は例外を投げず
+      時間帯のみへフォールバックする。「音は作る前に条件に合うものを探し、なるべく既存の
+      セットを用いる」という指示に従い、**新規音源はゼロ**（雨は既存の
+      `audio/relax/texture_rain.wav` を全テーマ共通で再利用、雪は積雪の遮音効果を
+      lowPassFactor で表現、時間帯は既存パラメータの微調整のみ）。変化は
+      `smoothEnvironment`（指数平滑化、τ=90秒）で「ゆっくりなだらかに」切り替わる。
+      「気分に合わせる＝気分に似た音を流すことではなく、そのタスクに適切な心理状態に導く
+      こと」という指摘を踏まえ、全軸の効果量を控えめ（±20%以内）にし、3軸合成後も
+      `clampModifier` で安全域にクランプしている。合わせて、Relax の不快感の原因調査で
+      見つかった Pad Ensemble LFO（ADR-006）の depth 過大問題（`PAD_DRIFT_DEPTH` 0.45→0.18）
+      も本セッションで修正済み（rev.4 内）。
+      未着手: フェーズ切替時の背景色4秒補間（`docs/02_SPEC.md` §6.3）、
+      Pad の実音源化（A/D/E キーに合う安定したドローン録音の追加探索）、
+      天気・時間帯のUI表示（現状は音にのみ反映、画面上に状態を出していない）
+      **rev.6**: Pomodoro に加えて「普通のタイマー」（/timer）と「ストップウォッチ」
+      （/stopwatch）を選べるようにした。TopNav の "Pomodoro" タブは3つをまとめる
+      "Timers" ボタンに改称し、押すと画面をぼかした上に Pomodoro/Timer/Stopwatch を選ぶ
+      オーバーレイメニュー（`TimerToolsMenu` — 白文字・白い罫線、ボタン間の隙間では
+      左右の縦棒だけが繋がって見える「梯子」状デザイン）が重なるようにした
+      （`apps/web/components/TimerToolsMenu.tsx`）。Timer/Stopwatch は `packages/core` に
+      Pomodoro のラウンド/休憩を持たない単純な状態機械（`countdown-state.ts`/
+      `stopwatch-state.ts`、絶対時刻ベース・Clock注入という既存の設計を踏襲）を新設し、
+      音の再生自体は Home のフリー再生（`playFreeplay`/`stopFreeplay`）をそのまま再利用した
+      （タイマーの数字表示と、鳴らす音を分離する設計）。`useNow` はタイマー種別に依存しない
+      よう `running: boolean` を引数に取る形へ汎化した。
+      **rev.6.1**: UIフィードバックを反映。(1) Home はタイマー再生中に持ち越された古い
+      `freeplayThemeId` があっても、`mode !== "freeplay"` の間は必ず「Kairos」の初期表示に
+      戻るよう修正。(2) `TimerToolsMenu` を Timers ボタンの真下に正しくアンカー表示（framer-motion
+      の `y`/`scale` アニメーションが `style.transform` を上書きしてしまい中央合わせがズレていた
+      バグを修正）し、ボタンサイズと背景ぼかしを縮小。(3) Timer/Stopwatch の設定画面では
+      選択中のサウンド/背景を常時プレビュー再生するようにした。(4) `25/10` を既定にする対象は
+      Timer/Stopwatch ではなく **Pomodoro** だったと判明し、`packages/core` に新しい既定
+      プリセット `STANDARD_PRESET`（25分/10分、id: `standard`）を追加してアプリ起動時の既定に
+      した（Classic 25/5・Deep 50/10 は従来どおり選択可能）。Pomodoro の既定 Focus テーマも
+      "work" → "study" に修正（Timer/Stopwatch はもともと "study" が既定で問題なし）。
+      **rev.6.2**: Timer/Stopwatch設定画面で「サウンドが鳴らない」報告を追跡し、
+      `ensureEngine()`（`apps/web/lib/soundscapeRuntime.ts`）に実在した競合状態を発見・修正。
+      `if (engine) return engine` だけでは初期化完了前の多重呼び出しを防げず、TopNavの
+      先取り初期化と各ページのマウント時初期化（Reactの StrictMode による副作用二重発火で
+      さらに助長）が重なると AudioContext / SoundscapeEngine が複数生成され、後勝ちの
+      インスタンスだけがモジュール変数に残り、先に作られた方に鳴らしたはずの音が届かず
+      消えることがあった。in-flightの Promise 自体をキャッシュする方式に変更し、
+      重複呼び出しは全員同じ初期化に相乗りするようにした。chrome-devtools MCP による
+      実ブラウザ計測で AudioContext が常に1個だけ生成されることを確認済み。
+      **rev.6.3**: 「25/10をデフォルトにする」変更（rev.6.1）を撤回し、Pomodoro の既定
+      プリセットを元の `25/5`（`CLASSIC_PRESET`）に戻した。`STANDARD_PRESET`（25/10、
+      id: `standard`）は削除し、`packages/core` の `BuiltinPresetId` は再び
+      `"classic" | "deep"` の2種のみになった。カスタムプリセットの右クリック削除
+      （赤いゴミ箱アイコン→クリックで削除、`PresetSelector.tsx`）は既存実装のまま維持
+      （ビルトインの Classic/Deep は右クリックしても反応しない設計を継続）。
+      **rev.6.4**: rev.6.2 の修正後も「サーバー再起動・別ブラウザでもTimers設定画面で音が
+      鳴らない」という報告が続いたため、`SoundscapeEngine.init()`（`packages/audio-engine/
+      src/engine.ts`）の自動再生ポリシー対策を強化した。従来は `AudioContext.resume()` の
+      完了を無条件に `await` しており、SPA遷移でジェスチャーの連続性が切れた場合に
+      resume() が pending のまま解決しないブラウザでは `init()` 自体が無期限に止まり、
+      `engineReady` が永遠に true にならず「何をしても無反応」に見えていた可能性がある
+      （自動化ブラウザでの計測ではこの状態を安定再現できなかったため、原因は推定を含む）。
+      対策として (1) resume() の待機に1.5秒のタイムアウトを設け、`init()` 自体は必ず完了
+      させるようにした。(2) resume() 後も `state !== "running"` のままなら、そのページ上で
+      次に起きる実際の操作（pointerdown/keydown/touchend）で確実に `resume()` を再試行する
+      listener を張った（`armGestureUnlock`。Chromeはブラウザ側でこれに近い自動再開を行うが、
+      Firefox/Safari 等は resume() 呼び出し自体がジェスチャーのコールスタック内にあることを
+      要求するため、明示的に張っている）。(3) Timer/Stopwatch設定画面に、
+      `debugInfo.contextState` が `"suspended"` のままなら理由を示す小さなヒント文言と、
+      `playFreeplay`/`ensureEngine` が例外を投げた場合に表示するエラーメッセージを追加し、
+      これまで `console.error` のみで利用者には何も見えなかった失敗を可視化した
+      （`apps/web/hooks/useFreeplay.ts` に `debugInfo` を追加露出）。
+      **rev.6.5**: 「TimerのTimerでは音が鳴るがPomodoroでは鳴らない」という報告を受け調査した
+      結果、Pomodoroだけ構造的にプレビュー再生の仕組みが無いことが判明した（Timer/Stopwatchは
+      Home と同じ freeplay 再生で「選ぶ＝鳴る」を実現していたが、Pomodoroは `useSoundscape()`
+      がマウント時に無条件で `switchToTimerMode()` を呼んでおり、Start前(`phase==="idle"`)は
+      `themeIdForTimerPhase()` が `null` を返すため常に無音だった。SOUND選択も
+      `setFocusThemeId` を呼ぶだけで再生には一切繋がっていなかった）。`useSoundscape()` から
+      自動 `switchToTimerMode()` を削除し、Pomodoro側で明示的に制御するよう変更:
+      Start前/セッション完了後(idle/completed)は Timer/Stopwatch と同じ freeplay プレビュー
+      （`useFreeplay().playFreeplay(focusThemeId)`）を使い、SOUND選択時にも同様に再生し直す
+      ようにした（`handleSelectFocusTheme`）。実行中（focus/shortBreak/longBreak）に入った
+      瞬間に `switchToTimerMode()` を呼んで TimerState 駆動のフェーズ別再生（休憩テーマへの
+      自動切替・クロスフェード）に引き継ぐ。Reset時は次の tick で一度 `engine.stop()` されて
+      からプレビューが再開する一瞬の途切れを避けるため、`reset()` 直後に同期的に
+      `playFreeplay()` を呼んで mode を先に "freeplay" へ倒す `handleReset` を追加。背景アート
+      の `active` も「実際に音が鳴っているか」基準（idle中は `freeplayPlaying`）に修正した。
+      Timer/Stopwatch と同じ suspended状態のヒント文言・エラーメッセージ表示も追加。
+      chrome-devtools MCP でPomodoro画面遷移直後・SOUND切替後の両方で実際の音声信号
+      （RMS/ピークとも非ゼロ、AudioContext常に1個）を確認済み。
+      **rev.6.6**: 「Pomodoro/TimerのSOUND切替がHomeと違って唐突に変わる（ゆっくり変わらない）」
+      という報告を受け、`playFreeplay()`（`apps/web/lib/soundscapeRuntime.ts`）に呼び出しが
+      重なる競合状態を発見・修正した。Pomodoro/TimerのSOUND選択ボタンは、クリック直後に
+      呼ばれるクリックハンドラと、設定画面プレビュー用の`useEffect`（同じテーマIDを見て
+      再生する）の**両方**からほぼ同時に`playFreeplay(id)`が呼ばれうる構造になっており、
+      `engine.begin()`/`transitionTo()`が数百ms差で二重に走ることで、本来3秒かけて
+      滑らかに変わるはずの等パワークロスフェードが2つ重なって唐突な変化に聞こえていた
+      （Home は同種のプレビューeffectを持たずクリックの1経路しかないため、この競合が
+      そもそも起こらなかった）。個々のReact effect/handlerのタイミングを精密に
+      揃えるのではなく、共有ランタイム層に `pendingFreeplayThemeId` という in-flight
+      ガードを追加し、同じテーマへの重複呼び出しは実際の再生要求を送らず状態フラグだけ
+      揃えて抜けるようにした。呼び出し元（クリックハンドラ／プレビューeffect／Reset時の
+      即時再生）を個別に調整する必要がなく、Pomodoro/Timer/Stopwatchのどの経路からでも
+      Homeと同じ単一の3秒クロスフェードになる。chrome-devtools MCPでPomodoroのSOUND切替時の
+      音声信号を150ms間隔でサンプリングし、無音への落ち込みや不連続なジャンプが無いことを
+      確認済み。
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
 

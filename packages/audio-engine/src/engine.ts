@@ -1,9 +1,9 @@
-import { automationFor } from "./automation";
 import { BufferLoader } from "./buffer-loader";
 import { equalPowerCurve } from "./equal-power";
+import { NEUTRAL_ENVIRONMENT, type EnvironmentModifier } from "./environment";
 import { createCompressorLimiter, type Limiter } from "./limiter";
 import { PhaseGraph } from "./phase-graph";
-import { soundDefinitionKeyFor, type EnginePhase, type LayerRole, type SoundPack } from "./types";
+import type { LayerRole, SoundPack, ThemeId } from "./types";
 import { IntervalTicker, WorkerTicker, type Ticker } from "./worker-ticker";
 
 /** 常に2〜3秒先までイベントを予約しておく（docs/04_SOUND_ENGINE.md §6.1）。 */
@@ -32,7 +32,7 @@ export class SoundscapeEngine {
   private pack: SoundPack | null = null;
   private currentGraph: PhaseGraph | null = null;
   private outgoingGraph: PhaseGraph | null = null;
-  private currentPhase: EnginePhase | null = null;
+  private currentTheme: ThemeId | null = null;
   private lastT = 0;
   private disposeOutgoingTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -47,7 +47,21 @@ export class SoundscapeEngine {
     this.ctx = ctx;
 
     if ("resume" in ctx) {
-      await (ctx as AudioContext).resume();
+      // 呼び出し元のジェスチャーがSPA遷移等で失われていた場合、resume() が長時間
+      // pending のまま解決しないブラウザがある。init() 自体をそれで止め続けると
+      // engineReady が永遠に true にならず、UIが「何をしても無反応」に見えてしまうため、
+      // 一定時間で見切りをつけて先へ進む（resume自体は裏で解決を試み続ける）。
+      await Promise.race([
+        (ctx as AudioContext).resume().catch(() => undefined),
+        new Promise<void>((resolve) => setTimeout(resolve, 1500)),
+      ]);
+      // まだ suspended のままなら、このページ上での次の実操作で確実に再開させる保険を張る。
+      // Chrome は自動再生ポリシー上この再開をブラウザ側で行うことがあるが、Firefox/Safari 等は
+      // resume() 呼び出し自体がジェスチャーのコールスタック内にあることを要求するため、
+      // アプリ側でも明示的に listener を張っておく。
+      if ((ctx as AudioContext).state !== "running") {
+        this.armGestureUnlock(ctx as AudioContext);
+      }
     }
 
     this.masterGain = ctx.createGain();
@@ -69,24 +83,42 @@ export class SoundscapeEngine {
     this.ticker.start(() => this.serviceCellScheduling());
   }
 
+  /**
+   * suspended のまま init() を抜けた AudioContext を、このページ上で次に起きる実際の
+   * ユーザー操作（クリック・タップ・キー入力）で必ず再開させる。running になった時点で
+   * listener を外す。SSR環境では document が無いため何もしない。
+   */
+  private armGestureUnlock(ctx: AudioContext): void {
+    if (typeof document === "undefined") return;
+    const events: Array<"pointerdown" | "keydown" | "touchend"> = ["pointerdown", "keydown", "touchend"];
+    const retry = () => {
+      if (ctx.state === "running") {
+        events.forEach((ev) => document.removeEventListener(ev, retry));
+        return;
+      }
+      void ctx.resume().catch(() => undefined);
+    };
+    events.forEach((ev) => document.addEventListener(ev, retry, { passive: true }));
+  }
+
   async loadPack(pack: SoundPack): Promise<void> {
     this.pack = pack;
   }
 
-  /** フェーズ開始。seed で音の展開を決定的にする。前のフェーズが無い最初の1回のみ使う想定。 */
-  async begin(phase: EnginePhase, seed: number): Promise<void> {
+  /** テーマ再生開始。seed で音の展開を決定的にする。前のテーマが無い最初の1回のみ使う想定。 */
+  async begin(theme: ThemeId, seed: number): Promise<void> {
     this.assertReady();
 
     if (this.currentGraph) {
       // 想定外の呼び出し順（例: Home のフリー再生中に Pomodoro を Start した等）でも
       // 無音を挟まず・古いグラフをリークさせずに済むよう、クロスフェードへ委譲する。
-      await this.transitionTo(phase, seed, 3);
+      await this.transitionTo(theme, seed, 3);
       return;
     }
 
-    const graph = await this.buildGraph(phase, seed);
+    const graph = await this.buildGraph(theme, seed);
     this.currentGraph = graph;
-    this.currentPhase = phase;
+    this.currentTheme = theme;
     this.lastT = 0;
 
     const now = this.ctx!.currentTime;
@@ -98,17 +130,22 @@ export class SoundscapeEngine {
     graph.scheduleMasterFade(equalPowerCurve(true), now, 1.5);
   }
 
-  /** useTimer から約10Hzで呼ばれる。t は 0.0–1.0。 */
-  tick(t: number): void {
+  /**
+   * useTimer から約10Hzで呼ばれる。t は 0.0–1.0。
+   * environment は天気/時間帯/経過時間による補正（docs/03_ARCHITECTURE.md ADR-010）。
+   * 呼び出し側（apps/web/lib/soundscapeRuntime.ts）が `smoothEnvironment` でなだらかに
+   * 近づけた値を渡す想定で、ここでは受け取ってそのまま PhaseGraph に渡すだけ。
+   */
+  tick(t: number, environment: EnvironmentModifier = NEUTRAL_ENVIRONMENT): void {
     if (!this.ctx || !this.currentGraph) return;
     this.lastT = t;
-    this.currentGraph.tick(t, this.ctx.currentTime);
+    this.currentGraph.tick(t, this.ctx.currentTime, environment);
   }
 
-  /** 次フェーズへ等パワークロスフェード。無音を挟まない。 */
-  async transitionTo(next: EnginePhase, seed: number, crossfadeSec = DEFAULT_CROSSFADE_SEC): Promise<void> {
+  /** 次テーマへ等パワークロスフェード。無音を挟まない。テーマ変更（例: Study→Work）にも使う。 */
+  async transitionTo(next: ThemeId, seed: number, crossfadeSec = DEFAULT_CROSSFADE_SEC): Promise<void> {
     this.assertReady();
-    if (!this.currentGraph || !this.currentPhase) {
+    if (!this.currentGraph || !this.currentTheme) {
       await this.begin(next, seed);
       return;
     }
@@ -124,7 +161,7 @@ export class SoundscapeEngine {
     this.outgoingGraph?.dispose(); // 前回の後片付けが終わっていなければ念のため即時破棄
     this.outgoingGraph = outgoing;
     this.currentGraph = newGraph;
-    this.currentPhase = next;
+    this.currentTheme = next;
     this.lastT = 0;
 
     if (this.disposeOutgoingTimer) clearTimeout(this.disposeOutgoingTimer);
@@ -158,7 +195,7 @@ export class SoundscapeEngine {
     this.masterGain.gain.setValueCurveAtTime(equalPowerCurve(true), now, fadeInSec);
   }
 
-  async stop(fadeOutSec = 1.0): Promise<void> {
+  async stop(fadeOutSec = 0.4): Promise<void> {
     if (!this.ctx || !this.masterGain) return;
     const now = this.ctx.currentTime;
     this.masterGain.gain.cancelScheduledValues(now);
@@ -172,7 +209,7 @@ export class SoundscapeEngine {
     );
     this.currentGraph = null;
     this.outgoingGraph = null;
-    this.currentPhase = null;
+    this.currentTheme = null;
 
     setTimeout(() => {
       for (const g of graphsToDispose) g.dispose();
@@ -201,14 +238,14 @@ export class SoundscapeEngine {
     contextTime: number;
     contextState: string;
     nextCellEventTime: number | null;
-    currentPhase: EnginePhase | null;
+    currentTheme: ThemeId | null;
   } | null {
     if (!this.ctx) return null;
     return {
       contextTime: this.ctx.currentTime,
       contextState: "state" in this.ctx ? (this.ctx as AudioContext).state : "offline",
       nextCellEventTime: this.currentGraph?.cellScheduler.nextEventTime ?? null,
-      currentPhase: this.currentPhase,
+      currentTheme: this.currentTheme,
     };
   }
 
@@ -241,18 +278,17 @@ export class SoundscapeEngine {
     }
   }
 
-  private async buildGraph(phase: EnginePhase, seed: number): Promise<PhaseGraph> {
+  private async buildGraph(theme: ThemeId, seed: number): Promise<PhaseGraph> {
     const pack = this.pack!;
     const ctx = this.ctx!;
-    const defKey = soundDefinitionKeyFor(phase);
-    const phaseDef = defKey === "focus" ? pack.focus : pack.break;
-    const irUrl = defKey === "focus" ? pack.ir.focus : pack.ir.break;
+    const themeDef = pack.themes[theme];
+    if (!themeDef) {
+      throw new Error(`SoundPack "${pack.id}" has no definition for theme "${theme}".`);
+    }
     return PhaseGraph.create({
       ctx,
       bufferLoader: this.bufferLoader!,
-      phaseDef,
-      automation: automationFor(phase),
-      irUrl,
+      themeDef,
       seed,
       startAt: ctx.currentTime,
       output: this.masterGain!,

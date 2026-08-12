@@ -34,8 +34,14 @@ export class CellScheduler {
     const st = this.scaleSemitones[idx]!;
     return {
       semitone: st + (this.rng() < 0.5 ? 0 : 12),
-      pan: (this.rng() * 2 - 1) * 0.6,
-      gain: 0.5 + this.rng() * 0.35,
+      // docs/03_ARCHITECTURE.md ADR-005: 固定式空間オーディオは動的トラッキングより疲労が少ない
+      // という知見（PMC8829886 で参照される空間オーディオ研究）に倣い、Cell は元々ループ中
+      // 動かない定位だが、幅そのものも左右へ飛びすぎない範囲(旧 ±0.6 → ±0.4)に狭めて
+      // 落ち着いた印象にする。
+      pan: (this.rng() * 2 - 1) * 0.4,
+      // Endel Science（"stimulate concentration without pulling you away from the task"）:
+      // Cell はあくまで背景の彩りであり主役ではない。もう一段控えめにする(旧: 0.43–0.73)。
+      gain: 0.36 + this.rng() * 0.24,
     };
   }
 

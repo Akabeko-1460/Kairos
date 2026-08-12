@@ -17,8 +17,9 @@ function pick<T>(arr: readonly T[]): T {
 
 export default function HomePage() {
   const {
-    freeplayCategoryId,
+    freeplayThemeId,
     freeplayPlaying,
+    mode,
     ensureEngine,
     playFreeplay,
     toggleFreeplayPause,
@@ -30,21 +31,28 @@ export default function HomePage() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [subtitle, setSubtitle] = useState("");
 
-  const selected = useMemo(() => SOUNDS.find((s) => s.id === freeplayCategoryId) ?? null, [freeplayCategoryId]);
+  // mode が "freeplay" でない間（Pomodoro/Timer/Stopwatch を経由した直後など）は
+  // freeplayThemeId が古い選択を持ち越していても無視し、必ず「Kairos」の初期表示に戻す。
+  const isFreeplayActive = mode === "freeplay";
+  const selected = useMemo(
+    () => (isFreeplayActive ? (SOUNDS.find((s) => s.id === freeplayThemeId) ?? null) : null),
+    [isFreeplayActive, freeplayThemeId],
+  );
+  const playing = isFreeplayActive && freeplayPlaying;
 
   // 画面全体（ヘッダーも含む）で共有する背景アートに、このページの状態を反映する。
   useEffect(() => {
     setBackgroundArt({
-      active: freeplayPlaying,
+      active: playing,
       styleId: selected?.visual ?? "starfield",
       accentColor: selected?.accent ?? "#8b8b93",
       holeRadiusRatio: 0,
       seed: selected ? SOUNDS.indexOf(selected) + 1 : 0,
     });
-  }, [selected, freeplayPlaying, setBackgroundArt]);
+  }, [selected, playing, setBackgroundArt]);
 
   const handleSelect = async (entry: SoundTheme) => {
-    if (freeplayCategoryId === entry.id) {
+    if (freeplayThemeId === entry.id) {
       // 同じ音をもう一度選んだら一時停止/再開のトグルにする
       toggleFreeplayPause();
       return;
@@ -53,7 +61,7 @@ export default function HomePage() {
     try {
       await ensureEngine();
       setSubtitle(pick(entry.subtitles));
-      await playFreeplay(entry.id, entry.phase);
+      await playFreeplay(entry.id);
     } finally {
       setLoadingId(null);
     }
@@ -82,7 +90,7 @@ export default function HomePage() {
 
       <div className="mb-10 flex max-w-2xl flex-wrap items-center justify-center gap-5">
         {SOUNDS.map((entry) => {
-          const active = freeplayCategoryId === entry.id;
+          const active = freeplayThemeId === entry.id;
           return (
             <div key={entry.id} className="flex flex-col items-center gap-2">
               <motion.button
@@ -126,10 +134,10 @@ export default function HomePage() {
           type="button"
           onClick={() => selected && toggleFreeplayPause()}
           disabled={!selected}
-          aria-label={freeplayPlaying ? "一時停止" : "再生"}
+          aria-label={playing ? "一時停止" : "再生"}
           className="flex h-11 w-11 items-center justify-center rounded-full border border-border text-foreground disabled:opacity-30"
         >
-          {freeplayPlaying ? "❚❚" : "▶"}
+          {playing ? "❚❚" : "▶"}
         </button>
 
         <VolumeSlider value={masterVolume} onChange={setMasterVolume} accentColor={accent} className="ml-2 flex-1" />

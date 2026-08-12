@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  CLASSIC_PRESET,
   changePreset as changePresetTransition,
+  CLASSIC_PRESET,
   createIdleState,
   pause as pauseTransition,
   reset as resetTransition,

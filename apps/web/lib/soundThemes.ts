@@ -1,10 +1,10 @@
 import type { IconVariant } from "@/components/SoundIcon";
 import type { VisualStyleId } from "@/lib/visualStyles";
-import type { EnginePhase } from "@kairos/audio-engine";
+import type { ThemeId, ThemeKind } from "@kairos/audio-engine";
 
 export interface SoundTheme {
-  id: string;
-  phase: EnginePhase;
+  id: ThemeId;
+  kind: ThemeKind;
   label: string;
   icon: IconVariant;
   accent: string;
@@ -13,14 +13,13 @@ export interface SoundTheme {
   subtitles: readonly string[];
 }
 
-// docs/CLAUDE.md: 現状のサウンドパックは focus/break の2種類の音響エンジンしか持たないため、
-// 複数カテゴリが同じ phase を共有する（見た目・配色・副題は独立させ、体験としては別物にする）。
-// 将来 packs.json に専用パックが増えたら、それぞれ固有の phase / SoundPack を割り当てる。
+// rev.3 (docs/04_SOUND_ENGINE.md ADR-004): 各テーマは packs.json 上で固有の音響定義
+// （key/scale/bpm/layers/automation）を持つ。id はそのまま SoundPack.themes のキーになる。
 // Home（自由再生）と Pomodoro（テーマ選択）の両方から参照する単一の定義元。
 export const SOUND_THEMES: SoundTheme[] = [
   {
     id: "study",
-    phase: "focus",
+    kind: "focus",
     label: "Study",
     icon: "book",
     accent: "#4c6ef5",
@@ -29,7 +28,7 @@ export const SOUND_THEMES: SoundTheme[] = [
   },
   {
     id: "work",
-    phase: "focus",
+    kind: "focus",
     label: "Work",
     icon: "focus",
     accent: "#8562f5",
@@ -38,7 +37,7 @@ export const SOUND_THEMES: SoundTheme[] = [
   },
   {
     id: "relax",
-    phase: "shortBreak",
+    kind: "break",
     label: "Relax",
     icon: "break",
     accent: "#3fae8e",
@@ -47,7 +46,7 @@ export const SOUND_THEMES: SoundTheme[] = [
   },
   {
     id: "sleep",
-    phase: "shortBreak",
+    kind: "break",
     label: "Sleep",
     icon: "crescent",
     accent: "#5b5ee6",
@@ -56,14 +55,14 @@ export const SOUND_THEMES: SoundTheme[] = [
   },
   {
     id: "move",
-    phase: "focus",
+    kind: "focus",
     label: "Move",
     icon: "motion",
     accent: "#f5a94c",
     visual: "trails",
-    subtitles: ["Light Cardio", "Walking Pace", "Morning Stretch", "Energy Boost"],
+    subtitles: ["Strength Training", "Cardio Drive", "Workout Pulse", "Power Hour"],
   },
 ];
 
-/** Pomodoro の Focus フェーズ中に選べるテーマ（phase === "focus" のもののみ）。 */
-export const FOCUS_SOUND_THEMES: SoundTheme[] = SOUND_THEMES.filter((t) => t.phase === "focus");
+/** Pomodoro の Focus フェーズ中に選べるテーマ（kind === "focus" のもののみ）。 */
+export const FOCUS_SOUND_THEMES: SoundTheme[] = SOUND_THEMES.filter((t) => t.kind === "focus");
