@@ -65,7 +65,7 @@ const MENU_ANCHOR_GAP = 14; // Timers ボタンとメニュー上端の間隔
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
-  const { mode, stopFreeplay } = useFreeplay();
+  const { mode, stopFreeplay, ensureEngine } = useFreeplay();
   const timersButtonRef = useRef<HTMLButtonElement>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
 
@@ -88,6 +88,10 @@ export function TopNav() {
 
   const handleSelectTool = (href: string) => {
     setMenuAnchor(null);
+    // Timer/Stopwatch は画面に入った瞬間からプレビュー音を鳴らす仕様（各ページの useEffect）。
+    // AudioContext はユーザー操作起点でしか作れない（ADR-003）ため、その操作をこのクリックに
+    // 前倒しして用意しておく（同期的な呼び出しなのでジェスチャー扱いのまま渡る）。
+    ensureEngine().catch((err: unknown) => console.error("[Kairos] SoundscapeEngine error:", err));
     router.push(href);
   };
 
