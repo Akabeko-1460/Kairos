@@ -72,7 +72,7 @@ interface SoundscapeRuntimeStore {
   mode: PlaybackMode;
   freeplayThemeId: ThemeId | null;
   freeplayPlaying: boolean;
-  /** Pomodoro の Focus フェーズで鳴らす/描くサウンドテーマ。デフォルトは汎用的な "Work"。 */
+  /** Pomodoro の Focus フェーズで鳴らす/描くサウンドテーマ。デフォルトは "Study"。 */
   focusThemeId: ThemeId;
   /**
    * マスター音量。Home/Pomodoro どちらの音量バーからも同じ値を読み書きする
@@ -262,7 +262,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     mode: "idle",
     freeplayThemeId: null,
     freeplayPlaying: false,
-    focusThemeId: "work",
+    focusThemeId: "study",
     masterVolume: 0.8,
 
     ensureEngine: async () => {

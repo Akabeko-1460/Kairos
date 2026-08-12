@@ -214,6 +214,16 @@
       音の再生自体は Home のフリー再生（`playFreeplay`/`stopFreeplay`）をそのまま再利用した
       （タイマーの数字表示と、鳴らす音を分離する設計）。`useNow` はタイマー種別に依存しない
       よう `running: boolean` を引数に取る形へ汎化した。
+      **rev.6.1**: UIフィードバックを反映。(1) Home はタイマー再生中に持ち越された古い
+      `freeplayThemeId` があっても、`mode !== "freeplay"` の間は必ず「Kairos」の初期表示に
+      戻るよう修正。(2) `TimerToolsMenu` を Timers ボタンの真下に正しくアンカー表示（framer-motion
+      の `y`/`scale` アニメーションが `style.transform` を上書きしてしまい中央合わせがズレていた
+      バグを修正）し、ボタンサイズと背景ぼかしを縮小。(3) Timer/Stopwatch の設定画面では
+      選択中のサウンド/背景を常時プレビュー再生するようにした。(4) `25/10` を既定にする対象は
+      Timer/Stopwatch ではなく **Pomodoro** だったと判明し、`packages/core` に新しい既定
+      プリセット `STANDARD_PRESET`（25分/10分、id: `standard`）を追加してアプリ起動時の既定に
+      した（Classic 25/5・Deep 50/10 は従来どおり選択可能）。Pomodoro の既定 Focus テーマも
+      "work" → "study" に修正（Timer/Stopwatch はもともと "study" が既定で問題なし）。
 - [ ] Phase 2: 生成エンジン本体（LoopManager のテイクローテーション、AI生成の本番素材への差し替え、実聴での音作り）
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張

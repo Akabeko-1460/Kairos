@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  CLASSIC_PRESET,
   changePreset as changePresetTransition,
   createIdleState,
   pause as pauseTransition,
@@ -11,6 +10,7 @@ import {
   setTotalRounds as setTotalRoundsTransition,
   skip as skipTransition,
   start as startTransition,
+  STANDARD_PRESET,
   syncToNow as syncToNowTransition,
   systemClock,
   type PomodoroPreset,
@@ -39,7 +39,7 @@ interface TimerStore {
 export const useTimerStore = create<TimerStore>()(
   persist(
     (set, get) => ({
-      state: createIdleState(CLASSIC_PRESET, systemClock.now()),
+      state: createIdleState(STANDARD_PRESET, systemClock.now()),
       start: () => set({ state: startTransition(get().state, systemClock.now()) }),
       pause: () => set({ state: pauseTransition(get().state, systemClock.now()) }),
       resume: () => set({ state: resumeTransition(get().state, systemClock.now()) }),
