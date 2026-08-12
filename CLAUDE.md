@@ -318,6 +318,35 @@
       `focus-bgm-literature-review.md`/`relax-sleep-sound.md`）は掲載対象外とした
       （`docs/research/` 内での参照有無は `docs/README.md` の索引と、リポジトリ全体を
       対象にした文字列検索で確認済み）。
+      **rev.6.9**: 3件の要望を反映。(1) Pomodoro の Preset をビルトイン（Classic/Deep）も
+      カスタムと同じ右クリック削除に対応させた。ビルトインは定数のため配列から取り除くのではなく
+      `usePresetsStore`（`apps/web/hooks/usePresets.ts`）に永続化した `hiddenBuiltinIds` へ載せて
+      非表示にする方式にした。最後の1件は削除不可（Pomodoroが選べなくなるため）にし、
+      選択中のプリセットが削除されて一覧に存在しなくなった場合は先頭のプリセットへ自動フォール
+      バックする（`PresetSelector.tsx`）。(2) スマホ・タブレット向けのレスポンシブ対応。
+      `TimerRing`（`apps/web/components/TimerRing.tsx`）が固定340pxで、Galaxy/Xperia等の
+      横幅360px級の実機で `px-8` の余白と合わせて横スクロールが発生しうる状態だったのが
+      核心的な不具合だったため、SVGをviewBox化した上で表示サイズを
+      `min(340px, calc(100vw - 88px))`（414px超のiPad/PCでは常に従来通り340px）にし、
+      時刻表示のフォントサイズも`clamp()`で追従させた。あわせてPomodoro/Timer/Stopwatch/Home/
+      Creditの左右余白を`px-5 sm:px-8`に、音量バーの固定幅コンテナを`w-full max-w-[252px]`に
+      変更し、`body`に`overflow-x:hidden`を安全策として追加した。chrome-devtools MCPで
+      360×780・375×812・768×1024の3幅を確認し、横スクロールが発生しないことを検証済み。
+      (3) 「Timers経由のPomodoro/Timer選択などの画面切り替えが滑らかでない」という指摘を
+      調査した結果、前面のコンテンツは`PageTransition`で滑らかにフェードしている一方、
+      全画面を覆う背景アート（`GeometricVisualizer`/`ShaderVisualizer`）は`styleId`/
+      `accentColor`が変わるとWebGL/canvasの状態を作り直すため色・模様が瞬時に切り替わっており、
+      これが「滑らかでない」の実体だった。音のクロスフェードと同じ発想を背景にも適用し、
+      `BackgroundArt.tsx`で直近2世代の背景を透明度でクロスフェード（0.9秒）させるよう変更した
+      （Reactの「propsの変化に合わせてレンダー中にstateを調整する」公式パターンを使い、
+      effect内での同期的なsetStateを避けている。`react-hooks/set-state-in-effect`
+      のESLintルールに抵触したため）。chrome-devtools MCPでSOUND切替時に背景レイヤーが
+      2枚同時にopacity遷移し、約0.9秒後に1枚へ収束することを確認済み。ついでにHomeの
+      サブタイトルを「動作に合わせて、生成されるサウンドを選んでください」に変更し、
+      Pomodoroのタスク追加欄を`<textarea>`化してShift+Enterで改行できるようにし
+      （通常のEnterのみ追加・確定）、プレースホルダーも操作説明入りの文言に変更した上で、
+      スマホ幅（`apps/web/hooks/useMediaQuery.ts`を新設、`useSyncExternalStore`で
+      SSR安全に実装）では操作説明部分を省いた短い文言に出し分けるようにした。
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
 

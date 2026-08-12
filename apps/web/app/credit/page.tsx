@@ -88,7 +88,7 @@ const REFERENCES = [
 
 export default function CreditPage() {
   return (
-    <div className="flex flex-1 justify-center px-8 py-16">
+    <div className="flex flex-1 justify-center px-5 py-12 sm:px-8 sm:py-16">
       <div className="flex w-full max-w-2xl flex-col gap-14">
         <section className="flex flex-col gap-4">
           <h1 className="text-2xl font-medium text-foreground">Kairos について</h1>
