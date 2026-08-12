@@ -172,17 +172,16 @@ export default function CreditPage() {
         <section className="flex flex-col gap-4">
           <h1 className="text-2xl font-medium text-foreground">Kairos について</h1>
           <p className="text-sm leading-7 text-muted">
-            Kairos は、集中フェーズと休憩フェーズに合わせて自動生成されるサウンドスケープを組み合わせた
+            Kairos は、集中フェーズと休憩フェーズに合わせて生成されるサウンドスケープを組み合わせた
             ポモドーロタイマーです。機械的に区切られ、淡々と過ぎていく時間（Chronos）を、
             質の高い集中と回復のための意味ある時間（Kairos）へと変えることを目指しています。
           </p>
           <p className="text-sm leading-7 text-muted">
-            音は「集中」「休憩」の2種類ではなく、Study（読書・学習）・Work（PC作業・創造的作業）・
+            サウンドはStudy（読書・学習）・Work（PC作業・創造的作業）・
             Move（運動）・Relax（リラックス）・Sleep（睡眠）という5つのテーマに分かれており、
-            それぞれ調・テンポ・音色・展開のロジックが根本から異なります。同じテーマでも、
-            天気や時間帯、音を流し続けている経過時間に応じて音がゆっくりと補正され、
-            同じ設定で実行しても毎回わずかに違う展開になります。背景に表示される幾何学模様の
-            映像も、テーマごとに専用のロジックで生成され、音と同じ時間軸で変化します。
+            それぞれ調・テンポ・音色・展開のロジックが異なります。同じテーマでも、
+            天気や時間帯、サウンドを流し続けている経過時間に応じてゆっくりと補正され、
+            同じ設定でも毎回わずかに違う展開になります。
           </p>
         </section>
 
@@ -192,7 +191,6 @@ export default function CreditPage() {
             <li>
               <span className="text-foreground">Home</span> —
               サウンドスケープを選んで、ポモドーロと関係なく自由に流し続けられます。
-              何も選んでいない待機画面にも専用の背景アニメーションがあります。
             </li>
             <li>
               <span className="text-foreground">Timers</span> —
@@ -201,12 +199,11 @@ export default function CreditPage() {
             <li className="pl-4 text-xs text-muted/80">
               <span className="text-foreground/80">Pomodoro</span> —
               プリセット（25/5・50/10、または独自のカスタム設定）を選んでセッションを開始します。
-              プリセットは右クリックで削除でき（ビルトイン・カスタムとも）、集中と休憩は自動で
-              交互に切り替わり、フェーズ切替は音がクロスフェードして無音を挟みません。
+              プリセットは右クリックで削除でき、集中と休憩は自動で
+              交互に切り替わり、フェーズ切替時に音がクロスフェードします。
             </li>
             <li className="pl-4 text-xs text-muted/80">
               <span className="text-foreground/80">Timer / Stopwatch</span> —
-              選んだサウンドが設定画面に入った瞬間から鳴り続けます（「選ぶ＝鳴る」）。
               Timerは好きな分数を指定してカウントダウンし、Stopwatchは経過時間を計測します。
             </li>
           </ul>
@@ -241,9 +238,8 @@ export default function CreditPage() {
         <section className="flex flex-col gap-4 pb-8">
           <h2 className="text-sm font-medium tracking-wide text-foreground">参考文献</h2>
           <p className="text-xs leading-6 text-muted/80">
-            Kairos は Endel の「機能性サウンドスケープ」という設計思想を参考にした独自実装です。
-            Endel の音源・ロゴ・商標・UI意匠は一切使用していません。各テーマの音響設計
-            （scale・bpm・automation や、天気・時間帯・経過時間による補正）は、以下の一次情報を
+            Kairosの音響設計
+            （scale・bpm・automation や、天気・時間帯・経過時間による補正）は、以下の情報を
             根拠にしています。タイトルのABC順に並べています。
           </p>
           <ul className="flex flex-col gap-4">
