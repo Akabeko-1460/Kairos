@@ -27,11 +27,29 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  /* スマホ幅でのページ内トランジション（scale/blurアニメーション）等が万一はみ出しても、
+     横スクロールという明確に「壊れて見える」状態にはしない安全策。 */
+  overflow-x: hidden;
 }
 
 /* 数字の桁揺れ防止（docs/02_SPEC.md §6.1） */
 .tabular-nums {
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * type="number" のクリック可能なスピンボタン（増減矢印）だけを消す。矢印キーでの
+ * increment/decrement はブラウザのネイティブ挙動のまま残る（見た目を消しても消えない）。
+ * CustomPresetModal の Focus/Break/ラウンド数入力で使用。
+ */
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.no-spinner {
+  appearance: textfield;
+  -moz-appearance: textfield;
 }
 
 /*

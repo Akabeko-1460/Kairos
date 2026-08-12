@@ -158,7 +158,7 @@ export default function StopwatchPage() {
   };
 
   return (
-    <div className="relative flex flex-1 items-center justify-center px-8 py-12">
+    <div className="relative flex flex-1 items-center justify-center px-5 py-10 sm:px-8 sm:py-12">
       <div className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-12 lg:flex-row lg:items-start lg:justify-center lg:gap-20">
         <div className="flex flex-col items-center gap-8">
           <TimerRing
@@ -251,7 +251,7 @@ export default function StopwatchPage() {
             </div>
           )}
 
-          <div className="w-[252px]">
+          <div className="w-full max-w-[252px]">
             <VolumeSlider value={masterVolume} onChange={setMasterVolume} accentColor={accent} />
           </div>
         </div>

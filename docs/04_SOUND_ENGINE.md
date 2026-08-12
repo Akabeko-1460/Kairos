@@ -152,8 +152,8 @@ Move も Study/Work と同じ弧をテンポだけ変えて流用していた。
 萎む」不快感を生んでいた（いずれもユーザーからの実聴フィードバック）。rev.4 では
 Endel の公開設計方針（endel.io/science, endel.io/focus, endel.io/activity, endel.io/relax）を
 参照し、**テーマごとに「拍の有無・性格」から作り直した**（詳細は ADR-009）。
-根拠文献は上記に加え `docs/deep-research-report_chatGPT.md`（ChatGPT報告）と
-`集中力を高める音の文献調査_gemini.md`（Gemini報告）。
+根拠文献は上記に加え `docs/research/sound-environment-focus-chatgpt.md`（ChatGPT報告）と
+`docs/research/focus-sound-literature-review-gemini.md`（Gemini報告）。
 
 ### 4.1 Study — 読書・参考書での学習（拍を持たない没入型）
 
@@ -296,7 +296,7 @@ t が進む（`apps/web/lib/soundscapeRuntime.ts` の `SLEEP_VIRTUAL_DURATION_SE
 | Reverb | 0.56–0.66 | 0.66–0.70（さらに大きく遠く。旧 0.80–0.85 から縮小、ADR-009） |
 | Low-pass | 1100–1150Hz | 650–800Hz（さらに暗く） |
 
-**設計根拠**（`03_ARCHITECTURE.md` ADR-008）: deep-research-report_relux_chatGPT.md の
+**設計根拠**（`03_ARCHITECTURE.md` ADR-008）: docs/research/relax-sleep-sound-chatgpt.md の
 最重要の知見 — 基礎研究（Basner 2026）でピンクノイズ50dBの継続再生により**REM睡眠が
 平均約19分短縮**したとの報告があり、白色/ピンクノイズ機の連続使用は「逆にREMや深睡眠を
 減少させる可能性が指摘されている」。レポートの推奨は「就寝後はタイマーで停止し、
@@ -629,7 +629,7 @@ Endel "Read" は規則的な拍を持たない。Study の Pulse は `generateAr
 #### Relax / Sleep の旋律パルス（`generateArpeggioPulse`、ADR-008/ADR-009）
 
 Relax と Sleep の Pulse は打楽器的なキックではなく、**柔らかい旋律フレーズ**にしている。
-拍ごとにスケール内の音程を辿る短いフレーズをループさせる。deep-research-report_relux_chatGPT.md
+拍ごとにスケール内の音程を辿る短いフレーズをループさせる。docs/research/relax-sleep-sound-chatgpt.md
 の「反復性や予測可能性が高いリズムが安定感を高める」「60–80BPM・柔らかく単純な旋律」を
 根拠にしている。Sleep は8拍中3拍しか鳴らさない疎らなパターンにして、Onset フェーズを
 過ぎると automation 側で音量を0まで落とす（§4.5）。ADR-009 で Relax のテンポを70→64bpmに

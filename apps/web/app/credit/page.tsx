@@ -26,6 +26,33 @@ const SOUND_CREDITS = [
   },
 ];
 
+// サウンド設計（テーマごとの scale/bpm/automation、環境軸の補正など）の根拠として実際に
+// 参照した文献調査のみを掲載する。docs/research/ には調査段階で集めた文献調査が他にもあるが、
+// 設計に直接反映されなかったものはここには載せない（参照箇所は docs/03_ARCHITECTURE.md の
+// 各 ADR、docs/04_SOUND_ENGINE.md、該当する packages/audio-engine のソースコメントを参照）。
+const RESEARCH_CITATIONS = [
+  {
+    title: "音環境が集中力・作業効率に与える影響（ChatGPT Deep Research）",
+    note: "5テーマ（Study/Work/Move/Relax/Sleep）を独立した音響定義にした ADR-004 の根拠のひとつ。",
+    path: "docs/research/sound-environment-focus-chatgpt.md",
+  },
+  {
+    title: "集中力・生産性を最大化する音響条件の文献レビュー（Gemini Deep Research）",
+    note: "ADR-004 の根拠のひとつ。音楽家に対する歌詞付きBGMの逆効果など、Work テーマのハイハット/Cell密度を抑えた根拠（ADR-007）にも使用。",
+    path: "docs/research/focus-sound-literature-review-gemini.md",
+  },
+  {
+    title: "リラクゼーション・睡眠に対する音響刺激の効果（ChatGPT Deep Research、Cochraneレビュー中心）",
+    note: "Relax/Sleep の全面再構築（ADR-008）の根拠。60–80BPMの柔らかい旋律アルペジオ、継続的ノイズがREM睡眠を短縮しうるという知見に基づくSleepの段階的減衰設計に使用。",
+    path: "docs/research/relax-sleep-sound-chatgpt.md",
+  },
+  {
+    title: "聴覚刺激とリラクゼーション/認知パフォーマンスの文献調査",
+    note: "天気・時間帯・経過時間による控えめな補正（ADR-010）の根拠。長時間再生時の聴取疲労を避ける漸減設計にも使用。",
+    path: "docs/research/environment-adaptive-sound.md",
+  },
+];
+
 const REFERENCES = [
   {
     title: "Endel — Technology",
@@ -61,7 +88,7 @@ const REFERENCES = [
 
 export default function CreditPage() {
   return (
-    <div className="flex flex-1 justify-center px-8 py-16">
+    <div className="flex flex-1 justify-center px-5 py-12 sm:px-8 sm:py-16">
       <div className="flex w-full max-w-2xl flex-col gap-14">
         <section className="flex flex-col gap-4">
           <h1 className="text-2xl font-medium text-foreground">Kairos について</h1>
@@ -85,9 +112,19 @@ export default function CreditPage() {
               サウンドスケープを選んで、ポモドーロと関係なく自由に流し続けられます。
             </li>
             <li>
-              <span className="text-foreground">Pomodoro</span> —
+              <span className="text-foreground">Timers</span> —
+              Pomodoro・Timer（カウントダウン）・Stopwatchの3つから選べます。
+            </li>
+            <li className="pl-4 text-xs text-muted/80">
+              <span className="text-foreground/80">Pomodoro</span> —
               プリセット（25/5・50/10、または独自のカスタム設定）を選んでセッションを開始します。
-              集中と休憩が自動で交互に切り替わり、フェーズ切替は音がクロスフェードして無音を挟みません。
+              プリセットは右クリックで削除でき（ビルトイン・カスタムとも）、集中と休憩は自動で
+              交互に切り替わり、フェーズ切替は音がクロスフェードして無音を挟みません。
+            </li>
+            <li className="pl-4 text-xs text-muted/80">
+              <span className="text-foreground/80">Timer / Stopwatch</span> —
+              選んだサウンドが設定画面に入った瞬間から鳴り続けます（「選ぶ＝鳴る」）。
+              Timerは好きな分数を指定してカウントダウンし、Stopwatchは経過時間を計測します。
             </li>
           </ul>
         </section>
@@ -111,6 +148,24 @@ export default function CreditPage() {
                   {ref.title}
                 </a>
                 <p className="mt-1 text-xs leading-6 text-muted">{ref.note}</p>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="flex flex-col gap-4">
+          <h2 className="text-sm font-medium tracking-wide text-foreground">サウンド設計の文献調査</h2>
+          <p className="text-xs leading-6 text-muted/80">
+            各テーマの scale/bpm/automation や、天気・時間帯による補正は、以下の文献調査を根拠にしています。
+          </p>
+          <ul className="flex flex-col gap-4">
+            {RESEARCH_CITATIONS.map((citation) => (
+              <li key={citation.path} className="border-l border-border pl-4">
+                <p className="text-sm text-foreground">{citation.title}</p>
+                <p className="mt-1 text-xs leading-6 text-muted">{citation.note}</p>
+                <code className="mt-1 inline-block rounded bg-surface px-1 py-0.5 text-[11px] text-muted">
+                  {citation.path}
+                </code>
               </li>
             ))}
           </ul>

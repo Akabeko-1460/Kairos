@@ -70,7 +70,7 @@ export default function HomePage() {
   const accent = selected?.accent ?? "#8b8b93";
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-between px-8 py-14">
+    <div className="flex flex-1 flex-col items-center justify-between px-5 py-10 sm:px-8 sm:py-14">
       <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
         <AnimatePresence mode="wait">
           <motion.div
@@ -82,7 +82,7 @@ export default function HomePage() {
           >
             <h1 className="text-3xl font-medium text-foreground">{selected ? selected.label : "Kairos"}</h1>
             <p className="mt-3 text-sm text-muted">
-              {selected ? subtitle : "集中と休憩に合わせて生成されるサウンドスケープを選んでください"}
+              {selected ? subtitle : "動作に合わせて、生成されるサウンドを選んでください"}
             </p>
           </motion.div>
         </AnimatePresence>

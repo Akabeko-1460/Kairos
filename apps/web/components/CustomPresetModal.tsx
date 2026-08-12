@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState, type FormEvent } from "react";
+import { NumberInput } from "./NumberInput";
 
 interface CustomPresetModalProps {
   onClose: () => void;
@@ -18,17 +19,17 @@ interface FieldProps {
 }
 
 // 数値入力。ガラスのように透けたトラック内に置くため、枠線ではなく下線＋淡いフォーカスグローで見せる。
+// クリックで空にして自由入力できる挙動自体は共有コンポーネント NumberInput が持つ。
 function NumberField({ label, name, value, min, max, onChange }: FieldProps) {
   return (
     <label className="flex items-center justify-between gap-4 text-xs text-muted">
       <span>{label}</span>
-      <input
-        type="number"
+      <NumberInput
         name={name}
         min={min}
         max={max}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={onChange}
         className="w-20 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-right text-sm text-foreground outline-none transition-colors focus:border-white/30 focus:bg-white/[0.07]"
       />
     </label>
@@ -92,7 +93,7 @@ export function CustomPresetModal({ onClose, onCreate }: CustomPresetModalProps)
               <NumberField label="Focus（分）" name="focusMinutes" min={1} max={180} value={focusMinutes} onChange={setFocusMinutes} />
               <NumberField label="Break（分）" name="breakMinutes" min={1} max={60} value={breakMinutes} onChange={setBreakMinutes} />
               <NumberField
-                label="長い休憩までのラウンド数"
+                label="ラウンド数"
                 name="roundsBeforeLongBreak"
                 min={1}
                 max={12}

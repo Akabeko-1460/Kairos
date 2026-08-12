@@ -7,8 +7,8 @@ export type LayerRole = "pad" | "texture" | "pulse" | "cell" | "cue";
 /**
  * UIの5テーマ（Study/Work/Move/Relax/Sleep）と1:1で対応するサウンドの識別子。
  * rev.2 までは "focus"/"break" の2種類の音響エンジンしか無く、テーマは見た目だけの差分だった。
- * rev.3 でテーマそのものを音響定義の単位にし、`docs/deep-research-report_chatGPT.md` /
- * `docs/集中力を高める音の文献調査_gemini.md` の知見をテーマごとに反映できるようにした。
+ * rev.3 でテーマそのものを音響定義の単位にし、`docs/research/sound-environment-focus-chatgpt.md` /
+ * `docs/research/focus-sound-literature-review-gemini.md` の知見をテーマごとに反映できるようにした。
  */
 export type ThemeId = "study" | "work" | "move" | "relax" | "sleep";
 

@@ -6,6 +6,7 @@ import { RoundIndicator } from "@/components/RoundIndicator";
 import { TimerRing } from "@/components/TimerRing";
 import { VolumeSlider } from "@/components/VolumeSlider";
 import { useFreeplay } from "@/hooks/useFreeplay";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useNow } from "@/hooks/useNow";
 import { useSoundscape } from "@/hooks/useSoundscape";
 import { useTaskListStore, type TaskItem } from "@/hooks/useTaskList";
@@ -16,7 +17,7 @@ import { FOCUS_SOUND_THEMES } from "@/lib/soundThemes";
 import { isRunning, progress, remainingMs, type PomodoroPreset } from "@kairos/core";
 import type { ThemeId } from "@kairos/audio-engine";
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 const buttonMotion = { whileHover: { scale: 1.04 }, whileTap: { scale: 0.95 } } as const;
 
@@ -41,17 +42,20 @@ function TaskRow({ item, onToggle, onRemove }: TaskRowProps) {
       className="group flex items-center gap-2 text-sm"
     >
       {/*
-        チェックボックスとタスク文をまとめて relative コンテナに入れ、完了時の
-        取り消し線をチェックボックスも含めて一直線に引けるようにする
-        （文字だけの text-decoration:line-through だとチェックボックスは貫通しない）。
+        タスク文は Shift+Enter で入力した改行を保持しつつ、長い文字列は行の幅で折り返す
+        （whitespace-pre-wrap + min-w-0。以前の truncate は改行を空白に潰し、長い文字列を
+        省略記号で切り詰めていた）。折り返して複数行になりうるため、完了時の取り消し線は
+        以前の「チェックボックスごと一直線」演出（絶対配置の1本線、単一行前提）をやめ、
+        各行に個別にかかる text-decoration の line-through に切り替えた
+        （複数行を1本の絶対配置の線で貫くことはできないため）。
       */}
-      <span className="relative flex flex-1 items-center gap-2 overflow-hidden">
+      <span className="relative flex flex-1 items-start gap-2">
         <button
           type="button"
           onClick={onToggle}
           aria-pressed={item.done}
           aria-label={item.done ? `${item.text} を未完了に戻す` : `${item.text} を完了にする`}
-          className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-white/70"
+          className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-white/70"
         >
           {item.done && (
             <svg
@@ -68,15 +72,13 @@ function TaskRow({ item, onToggle, onRemove }: TaskRowProps) {
             </svg>
           )}
         </button>
-        <span className={`truncate ${item.done ? "text-muted/50" : "text-foreground"}`}>{item.text}</span>
-        <motion.span
-          aria-hidden
-          className="pointer-events-none absolute left-0 top-1/2 h-px bg-muted/60"
-          style={{ transformOrigin: "left" }}
-          initial={false}
-          animate={{ width: item.done ? "100%" : "0%" }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
-        />
+        <span
+          className={`min-w-0 flex-1 whitespace-pre-wrap break-words ${
+            item.done ? "text-muted/50 line-through" : "text-foreground"
+          }`}
+        >
+          {item.text}
+        </span>
       </span>
       {/*
         ×が押しにくいので少し大きくする。文字サイズを上げつつ、
@@ -136,6 +138,10 @@ export default function PomodoroPage() {
   const now = useNow(isRunning(state));
   const [starting, setStarting] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const taskInputRef = useRef<HTMLTextAreaElement>(null);
+  // スマホの狭い横幅では操作説明文が折り返して間延びするため、短い文言に差し替える。
+  const isCompactViewport = useMediaQuery("(max-width: 639px)");
+  const taskPlaceholder = isCompactViewport ? "タスクを追加" : "タスクを追加（Enterで追加・Shift＋Enterで改行）";
 
   const isIdle = state.phase === "idle" || state.phase === "completed";
   const isBreakPhase = state.phase === "shortBreak" || state.phase === "longBreak";
@@ -258,16 +264,26 @@ export default function PomodoroPage() {
 
   const handleSelectPreset = (preset: PomodoroPreset) => changePreset(preset);
 
-  // Enter で確定したタスクを箇条書きリストに追加し、入力欄（taskHeadline を下書きとして流用）は空にする。
-  const handleAddTaskKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== "Enter") return;
+  // Enter単独で確定したタスクを箇条書きリストに追加し、入力欄（taskHeadlineを下書きとして流用）は
+  // 空にする。Shift+Enterは改行として入力欄にそのまま渡す（テキストエリアの既定動作に任せ、
+  // ここでは何もしない）。
+  const handleAddTaskKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
     e.preventDefault();
     addTaskItem(state.taskHeadline);
     setTaskHeadline("");
   };
 
+  // 複数行になったら高さも追従させる（1行のときは今までと同じ見た目に戻す）。
+  useEffect(() => {
+    const el = taskInputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [state.taskHeadline]);
+
   return (
-    <div className="relative flex flex-1 items-center justify-center px-8 py-12">
+    <div className="relative flex flex-1 items-center justify-center px-5 py-10 sm:px-8 sm:py-12">
       {/*
         右カラムの先頭行（RoundIndicator）を左のタイマーリング上端に揃えるため、
         行全体を items-start にする（items-center だと2カラムの高さの違いで中央合わせになり、
@@ -369,14 +385,15 @@ export default function PomodoroPage() {
           <RoundIndicator currentRound={state.currentRound} totalRounds={state.totalRounds} accentColor={accent} />
 
           <div className="w-full">
-            <input
-              type="text"
+            <textarea
+              ref={taskInputRef}
               name="taskHeadline"
+              rows={1}
               value={state.taskHeadline}
               onChange={(e) => setTaskHeadline(e.target.value)}
               onKeyDown={handleAddTaskKeyDown}
-              placeholder="このセッションで取り組むタスクを追加（Enterで追加）"
-              className="w-full border-b border-border bg-transparent px-1 py-2 text-center text-sm text-foreground placeholder:text-muted/50 focus:border-foreground focus:outline-none lg:text-left"
+              placeholder={taskPlaceholder}
+              className="block w-full resize-none overflow-hidden border-b border-border bg-transparent px-1 py-2 text-center text-sm text-foreground placeholder:text-muted/50 focus:border-foreground focus:outline-none lg:text-left"
             />
 
             {taskItems.length > 0 && (
@@ -416,7 +433,7 @@ export default function PomodoroPage() {
             幅はHome画面の音量バーと同じにする（Home側は max-w-xs(320px) の行から再生ボタン
             44px・gap-4(16px)・ml-2(8px) を差し引いた 252px がスライダーの実サイズ）。
           */}
-          <div className="w-[252px]">
+          <div className="w-full max-w-[252px]">
             <VolumeSlider value={masterVolume} onChange={setMasterVolume} accentColor={accent} />
           </div>
         </div>
