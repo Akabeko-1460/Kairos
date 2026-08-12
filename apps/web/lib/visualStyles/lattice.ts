@@ -78,7 +78,7 @@ export const latticeStyle: VisualStyle<LatticeState> = {
       const len = (major ? 0.05 : 0.02) * minDim * (0.5 + bandAmp * 0.8);
       const r0 = tickBaseR;
       const r1 = tickBaseR + len;
-      ctx.strokeStyle = rgba(rgb, (major ? 0.4 + bandAmp * 0.3 : 0.14) * (0.25 + converge * 0.75) * breath);
+      ctx.strokeStyle = rgba(rgb, (major ? 0.52 + bandAmp * 0.34 : 0.2 + bandAmp * 0.1) * (0.32 + converge * 0.75) * breath);
       ctx.beginPath();
       ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
       ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
@@ -101,8 +101,8 @@ export const latticeStyle: VisualStyle<LatticeState> = {
         if (s === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
-      ctx.strokeStyle = rgba(rgb, (0.28 + curveAmp * 0.32) * (0.2 + converge * 0.8) * breath);
-      ctx.lineWidth = Math.max(0.8, minDim * 0.0011);
+      ctx.strokeStyle = rgba(rgb, (0.38 + curveAmp * 0.36) * (0.24 + converge * 0.8) * breath);
+      ctx.lineWidth = Math.max(1, minDim * 0.0015);
       ctx.stroke();
       ctx.restore();
     }
@@ -124,8 +124,8 @@ export const latticeStyle: VisualStyle<LatticeState> = {
 
       const x = cx + sx + (tx - sx) * converge;
       const y = cy + sy + (ty - sy) * converge;
-      const size = Math.max(0.8, minDim * 0.0016) * (0.7 + converge * 1.1);
-      const alpha = (0.12 + converge * 0.55 + amp * 0.08) * breath;
+      const size = Math.max(0.9, minDim * 0.002) * (0.75 + converge * 1.2);
+      const alpha = (0.18 + converge * 0.62 + amp * 0.1) * breath;
       ctx.beginPath();
       ctx.arc(x, y, size, 0, Math.PI * 2);
       ctx.fillStyle = rgba(rgb, alpha);
@@ -152,8 +152,8 @@ export const latticeStyle: VisualStyle<LatticeState> = {
       if (s === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
-    ctx.strokeStyle = rgba(rgb, (0.14 + secondaryBreath * 0.16) * (0.3 + converge * 0.5));
-    ctx.lineWidth = Math.max(0.8, minDim * 0.001);
+    ctx.strokeStyle = rgba(rgb, (0.2 + secondaryBreath * 0.2) * (0.35 + converge * 0.5));
+    ctx.lineWidth = Math.max(1, minDim * 0.0013);
     ctx.stroke();
     ctx.restore();
   },

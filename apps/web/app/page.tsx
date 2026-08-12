@@ -41,11 +41,14 @@ export default function HomePage() {
   const playing = isFreeplayActive && freeplayPlaying;
 
   // 画面全体（ヘッダーも含む）で共有する背景アートに、このページの状態を反映する。
+  // テーマ未選択の待機状態（＝「Kairos」表示中）は、黒と白のみの2色構成・
+  // 「時間」をモチーフにした専用の幾何学アニメーション（chronos）にする
+  // （テーマ選択後はそのテーマの生成アートに切り替わる）。
   useEffect(() => {
     setBackgroundArt({
       active: playing,
-      styleId: selected?.visual ?? "starfield",
-      accentColor: selected?.accent ?? "#8b8b93",
+      styleId: selected?.visual ?? "chronos",
+      accentColor: selected?.accent ?? "#ffffff",
       holeRadiusRatio: 0,
       seed: selected ? SOUNDS.indexOf(selected) + 1 : 0,
     });
