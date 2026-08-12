@@ -158,14 +158,16 @@ rev.3（`03_ARCHITECTURE.md` ADR-004）から、この弧は5つのテーマ（s
 
 | 項目 | **Study** | **Work** | **Move** |
 |---|---|---|---|
+| 想定用途 | 本を読む・参考書と向き合う学習（言語処理中心） | PC作業・仕事、および作曲/ライティングなどの創造的作業 | 軽い運動・移動中 |
 | Key / Scale | A Aeolian | A Dorian | E Major Pentatonic |
 | BPM | 68（安静時心拍に近い一定リズム） | 76（Studyよりやや速く覚醒度を上げる） | 120（運動的・明るいテンポ、安静時心拍よりやや速い） |
-| Texture | ピンクノイズのみ（純粋なマスキング） | ピンクノイズ＋ハムのブレンド（「オフィス」の質感） | 高域寄りの軽いエア質感（マスキングより開放感） |
-| Pulse (Sustain) | 0.42（控えめ、一定） | 0.52（やや前に出る） | 0.68（強く推進力を出す） |
-| Cell 発火頻度 | 約11秒に1回 | 約7.7秒に1回 | 約6秒に1回（生気） |
-| Reverb (Sustain) | 0.20（小部屋、明瞭） | 0.16（タイトでドライ） | 0.10（さらにドライ、パンチを殺さない） |
-| Low-pass (Sustain) | 6000Hz | 7200Hz | 9500Hz（明るく開放的） |
-| 根拠 | ChatGPT報告「作業タイプ依存性」表: 集中学習は一定テンポ・歌詞なし・ピンクノイズ・音量中 | Gemini報告 §3.2: 単純作業はやや速いテンポで交感神経を軽く刺激 | 両報告: 明るいテンポの音楽が気分と覚醒度を高める（100–140BPM） |
+| Pad の音色 | サイン波中心、装飾なし（シンプルさ優先） | 木質楽器/弦楽器のボディ共鳴を模した帯域（700Hz付近）を付与（ADR-007、Endel "Deep Work"） | 明るい register（e4）、major pentatonic の開放感 |
+| Texture | ピンクノイズをさらに軽くローパス（4600Hz）して暖かく（ADR-007） | ピンクノイズ＋"room"（木質の部屋を思わせる250–2200Hz帯域ノイズ。旧"hum"から置き換え） | 高域寄りの軽いエア質感（マスキングより開放感） |
+| Pulse (Sustain) | 0.36（控えめ、一定） | 0.44（やや前に出るが、ハイハットは控えめ） | 0.58（強く推進力を出す） |
+| Cell 発火頻度 | 約11秒に1回 | 約9秒に1回（ADR-007で0.13→0.11に減らした） | 約6秒に1回（生気） |
+| Reverb (Sustain) | 0.20（小部屋、明瞭） | 0.20（没入感、ADR-007で0.16から増やした） | 0.10（さらにドライ、パンチを殺さない） |
+| Low-pass (Sustain) | 5400Hz（ADR-007で6000Hzから下げ、低覚醒・暖かい印象に） | 7200Hz | 9500Hz（明るく開放的） |
+| 根拠 | ChatGPT報告「作業タイプ依存性」表: 集中学習は一定テンポ・歌詞なし・ピンクノイズ・音量中。timbre研究: 低いスペクトル傾斜＝肯定的な感情価 | Endel "Deep Work": 弦楽器/鍵盤/木質音・ゆったりしたテンポ・没入感のあるハーモニー。ライティングは言語処理を伴うため装飾音は控えめに（ADR-007） | 両報告: 明るいテンポの音楽が気分と覚醒度を高める（100–140BPM） |
 
 **設計根拠（共通）**（`01_ENDEL_RESEARCH.md` §4 と ChatGPT/Gemini報告の合意点）
 - 「一定のビートが長時間の集中を助ける」→ `pulse` を Sustain 区間で完全に一定に保つ
@@ -202,11 +204,12 @@ rev.3（`03_ARCHITECTURE.md` ADR-004）から、この弧は5つのテーマ（s
 
 | 要素 | Study | Work | Move | Relax | Sleep |
 |---|---|---|---|---|---|
-| 拍 | あり・一定 68bpm | あり・一定 76bpm | あり・一定 120bpm | なし | なし |
-| Noise color | ピンク | ピンク＋ハム | 軽いエア（ハイパス強め） | 自然音（雨/波） | ブラウン |
-| Reverb | 小部屋 0.20–0.28 | 小部屋 0.16–0.22 | ドライ 0.10–0.14 | ホール 0.45–0.65 | 深ホール 0.55–0.75 |
-| Low-pass | 6000Hz | 7200Hz | 9500Hz | 1800–3000Hz | 1000–1600Hz |
-| Cell 発火頻度 | 約11秒に1回 | 約7.7秒に1回 | 約6秒に1回 | 約24–40秒に1回 | 約50秒に1回 |
+| 拍 | あり・一定 68bpm | あり・一定 76bpm（ハイハット控えめ） | あり・一定 120bpm | なし | なし |
+| Noise color | ピンク（さらに暖色化） | ピンク＋"room"（木質の部屋） | 軽いエア（ハイパス強め） | 自然音（雨/波） | ブラウン |
+| Pad の装飾 | なし（サイン波中心） | 木質/弦楽器ボディ共鳴（ADR-007） | なし | なし | なし |
+| Reverb | 小部屋 0.20–0.38 | 小部屋〜やや没入 0.20–0.34 | ドライ 0.10–0.14 | ホール 0.45–0.65 | 深ホール 0.55–0.75 |
+| Low-pass | 5400Hz | 7200Hz | 9500Hz | 1800–3000Hz | 1000–1600Hz |
+| Cell 発火頻度 | 約11秒に1回 | 約9秒に1回 | 約6秒に1回 | 約24–40秒に1回 | 約50秒に1回 |
 | 呼吸 | 無し | 無し | 無し | 0.08Hz | 0.045Hz |
 | Pomodoro での役割 | Focus（選択可） | Focus（選択可・既定） | Focus（選択可） | shortBreak（固定） | longBreak（固定） |
 
@@ -494,10 +497,13 @@ Pulse 層は元は固定周波数のクリック音だったが、「ドラム�
 > soft minimal electronic pulse, 68 BPM, muted low kick only, very low intensity, no melody, no bass line, steady and hypnotic, seamless loop
 
 **Study / Texture**
-> subtle pink noise bed, no music, no melody, constant level, seamless loop
+> subtle warm pink noise bed, slightly rolled-off high end like a quiet library, no music, no melody, constant level, seamless loop
+
+**Work / Pad**
+> warm ambient pad with a subtle wooden/string body resonance, A dorian, smooth synthesized string/keyboard/wood tones, slow evolving texture, no melody, no percussion, no vocals, immersive but unobtrusive, seamless loop, 30 seconds
 
 **Work / Texture**
-> pink noise blended with faint office room hum, no music, no melody, constant level, seamless loop
+> pink noise blended with a warm room-toned noise bed (250–2200Hz, like being inside a wood-paneled room), no office hum, no music, no melody, constant level, seamless loop
 
 **Move / Pad**
 > bright ambient pad, E major pentatonic, energetic but not busy, no percussion, no melody, seamless loop, 24 seconds

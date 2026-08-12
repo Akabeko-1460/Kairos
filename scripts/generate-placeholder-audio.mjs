@@ -244,7 +244,19 @@ function noteFreq(name) {
 
 // --- 素材生成 ---
 
-function generatePad(rootNote, chordIntervals, loopSeconds, seed) {
+/**
+ * docs/03_ARCHITECTURE.md ADR-007: `bodyResonanceHz` を指定すると、その帯域を持ち上げて
+ * 木質楽器/弦楽器のボディ共鳴を模した温かみを足す（Endel "Deep Work": "smooth synthesized
+ * string, keyboard and wood notes" を参考に、Work テーマの Pad にのみ適用する）。
+ *
+ * @param {string} rootNote
+ * @param {number[]} chordIntervals
+ * @param {number} loopSeconds
+ * @param {number} seed
+ * @param {{bodyResonanceHz?: number, bodyResonanceGain?: number}} [opts]
+ */
+function generatePad(rootNote, chordIntervals, loopSeconds, seed, opts = {}) {
+  const { bodyResonanceHz = null, bodyResonanceGain = 0 } = opts;
   const rng = mulberry32(seed);
   const root = noteFreq(rootNote);
   const partials = chordIntervals.map((semi, idx) => {
@@ -255,11 +267,23 @@ function generatePad(rootNote, chordIntervals, loopSeconds, seed) {
   const breathHz = 1 / loopSeconds; // ループ全体で1呼吸
   const breath = add(scale(sine(breathHz, loopSeconds), 0.15), silence(loopSeconds).fill(0.85));
   let out = multiply(add(...partials), breath);
+  if (bodyResonanceHz && bodyResonanceGain > 0) {
+    const band = onePoleLowpass(onePoleHighpass(out, SAMPLE_RATE, bodyResonanceHz * 0.6), SAMPLE_RATE, bodyResonanceHz * 1.8);
+    out = add(out, scale(band, bodyResonanceGain));
+  }
   out = peakNormalize(out, 0.5);
   return loopifyEqualPower(out, SAMPLE_RATE, Math.min(2, loopSeconds * 0.1));
 }
 
-function generateTexture(kind, loopSeconds, seed) {
+/**
+ * @param {string} kind
+ * @param {number} loopSeconds
+ * @param {number} seed
+ * @param {{warmLowpassHz?: number}} [opts] warmLowpassHz: 生成後にさらにローパスして
+ *   高域のシャリつきを削り、暖かい印象にする（Study のピンクノイズに使用）。
+ */
+function generateTexture(kind, loopSeconds, seed, opts = {}) {
+  const { warmLowpassHz = null } = opts;
   const rng = mulberry32(seed);
   const n = Math.round(loopSeconds * SAMPLE_RATE);
   let raw;
@@ -268,8 +292,11 @@ function generateTexture(kind, loopSeconds, seed) {
   } else if (kind === "brown") {
     // Sleep テーマの主texture。ピンクよりさらに高域が落ちる(1/f²)ため、追加でローパスして深みを出す。
     raw = onePoleLowpass(brownNoise(rng, n), SAMPLE_RATE, 500);
-  } else if (kind === "hum") {
-    raw = onePoleLowpass(whiteNoise(rng, n), SAMPLE_RATE, 400);
+  } else if (kind === "room") {
+    // Work テーマの主texture（旧 hum を置き換え。ADR-007）。
+    // オフィスの空調ハムというより「木質の部屋に包まれる」質感を狙い、
+    // 白色雑音を250–2200Hzの帯域に絞って暖かさを出す（Endel "Deep Work": immersive background harmony）。
+    raw = onePoleLowpass(onePoleHighpass(whiteNoise(rng, n), SAMPLE_RATE, 250), SAMPLE_RATE, 2200);
   } else if (kind === "air") {
     // Move テーマの軽いtexture。マスキングより開放感を優先し、ハイパスで低域を削る。
     const noise = onePoleLowpass(whiteNoise(rng, n), SAMPLE_RATE, 5000);
@@ -288,7 +315,8 @@ function generateTexture(kind, loopSeconds, seed) {
     const lfo = add(scale(sine(seamlessFreq(0.1, loopSeconds), loopSeconds), 0.5), silence(loopSeconds).fill(0.5));
     raw = multiply(noise, lfo);
   }
-  const normalized = peakNormalize(raw, 0.35);
+  let normalized = peakNormalize(raw, 0.35);
+  if (warmLowpassHz) normalized = onePoleLowpass(normalized, SAMPLE_RATE, warmLowpassHz);
   return loopifyEqualPower(normalized, SAMPLE_RATE, Math.min(1.5, loopSeconds * 0.1));
 }
 
@@ -402,8 +430,12 @@ async function main() {
   await saveWav("audio/study/pad_01.wav", generatePad("a3", [0, 3, 7], 32, 1101));
   await saveWav("audio/study/pad_02.wav", generatePad("a3", [0, 3, 7], 32, 1102));
   await saveWav("audio/study/pad_03.wav", generatePad("a3", [0, 3, 10], 32, 1103));
-  await saveWav("audio/study/texture_pink_a.wav", generateTexture("pink", 20, 1111));
-  await saveWav("audio/study/texture_pink_b.wav", generateTexture("pink", 20, 1112));
+  // ADR-007: 「図書室で本を読む」体験を想定し、ピンクノイズをさらに軽くローパスして
+  // 高域のシャリつきを削る（brightness = 覚醒/緊張、という音色心理学の知見に基づき、
+  // Study は Work よりわずかに暗め＝低覚醒に寄せる）。
+  const studyTextureOpts = { warmLowpassHz: 4600 };
+  await saveWav("audio/study/texture_pink_a.wav", generateTexture("pink", 20, 1111, studyTextureOpts));
+  await saveWav("audio/study/texture_pink_b.wav", generateTexture("pink", 20, 1112, studyTextureOpts));
   const studyKick = { toneStartHz: 130, toneEndHz: 55, pitchDropRate: 28, toneGain: 0.7, noiseGain: 0.1, decayK: 36, clickSec: 0.055 };
   await saveWav("audio/study/pulse_01.wav", generatePulse(68, 8, 1121, studyKick));
   await saveWav("audio/study/pulse_02.wav", generatePulse(68, 8, 1122, studyKick));
@@ -413,14 +445,23 @@ async function main() {
   await saveWav("audio/study/cell_g4.wav", generateOneShot(noteFreq("g4"), 2.2, 1.1, 1134));
 
   console.log("Work 層を生成中...（A dorian, 76bpm — ピンク+ハムのブレンドでやや明るく）");
-  await saveWav("audio/work/pad_01.wav", generatePad("a3", [0, 3, 7, 9], 30, 1201));
-  await saveWav("audio/work/pad_02.wav", generatePad("a3", [0, 3, 7, 9], 30, 1202));
-  await saveWav("audio/work/pad_03.wav", generatePad("a3", [0, 3, 9], 30, 1203));
+  // ADR-007: Endel "Deep Work"（"smooth synthesized string, keyboard and wood notes,
+  // immersive background harmony"）を参考に、木質楽器/弦楽器のボディ共鳴を模した帯域を
+  // Pad に足して温かみを出す。PC作業だけでなく作曲・ライティングのような創造的作業も
+  // 想定するテーマのため、Study よりも音色に厚みを持たせる。
+  const workPadOpts = { bodyResonanceHz: 700, bodyResonanceGain: 0.35 };
+  await saveWav("audio/work/pad_01.wav", generatePad("a3", [0, 3, 7, 9], 30, 1201, workPadOpts));
+  await saveWav("audio/work/pad_02.wav", generatePad("a3", [0, 3, 7, 9], 30, 1202, workPadOpts));
+  await saveWav("audio/work/pad_03.wav", generatePad("a3", [0, 3, 9], 30, 1203, workPadOpts));
   await saveWav("audio/work/texture_pink.wav", generateTexture("pink", 20, 1211));
-  await saveWav("audio/work/texture_hum.wav", generateTexture("hum", 20, 1212));
+  // 旧 texture_hum.wav（オフィスの空調ハム）を "room" に置き換え。
+  await saveWav("audio/work/texture_room.wav", generateTexture("room", 20, 1212));
   const workKick = {
     toneStartHz: 150, toneEndHz: 62, pitchDropRate: 32, toneGain: 0.78, noiseGain: 0.13, decayK: 42, clickSec: 0.05,
-    hatGain: 0.09, hatDecayK: 110, hatHighpassHz: 7500, // Study よりわずかに前へ出るリズム（デスクワーク全般向け）
+    // ADR-007: ハイハットをさらに控えめに(旧 0.09 → 0.06)。作曲・ライティングのような
+    // 言語/音楽処理そのものを行うタスクでは、リズムの主張が強すぎるとかえって干渉しうる
+    // （集中力を高める音の文献調査_gemini.md §3.1、無関連発話効果の音楽家版）。
+    hatGain: 0.06, hatDecayK: 110, hatHighpassHz: 7500,
   };
   await saveWav("audio/work/pulse_01.wav", generatePulse(76, 8, 1221, workKick));
   await saveWav("audio/work/pulse_02.wav", generatePulse(76, 8, 1222, workKick));

@@ -269,6 +269,53 @@ PMC8829886（Endel 社のEEG研究）は「パーソナライズされた音は�
 
 ---
 
+## ADR-007: Study と Work を用途別にブラッシュアップする（読書 vs PC作業・創作）
+
+### 決定
+ユーザーからの用途の明確化を受け、Study と Work を次のように差別化した。
+
+- **Study**: 「本を読む・参考書と向き合う」学習を想定。ピンクノイズにさらに軽いローパス
+  （4600Hz）をかけて高域のシャリつきを削り、Pad/Cell/Cue 全体の `lowPassHz` sustain を
+  6000Hz→5400Hz に下げた。音色をより暗め（低覚醒）に寄せることで「静かな図書室」の
+  印象を強めている
+- **Work**: 「PC作業・仕事」に加えて「作曲やライティングなどの創造的作業」も想定。
+  - Pad に木質楽器/弦楽器のボディ共鳴を模した帯域（700Hz付近）を持ち上げ、Endel の
+    "Deep Work"（"smooth synthesized string, keyboard and wood notes"）が描く温かい
+    楽器的質感に寄せた
+  - Texture を「オフィスの空調ハム」（`hum`）から「木質の部屋に包まれる」低〜中域の
+    ノイズ（`room`、250–2200Hz帯域）に置き換えた
+  - `reverbWet` を sustain 0.16→0.20 に増やし、Endel の "immersive background harmony"
+    に寄せて没入感を足した
+  - Pulse のオフビートハイハットを控えめに（`hatGain` 0.09→0.06）、`cellDensity` も
+    sustain 0.13→0.11 に下げた。作曲・ライティングは言語/音楽処理そのものを行う
+    タスクであり、リズム/装飾音の主張が強いと自分の思考と競合しうるため
+
+### 調べたこと
+- **Endel の公式カテゴリ分け**（endel.io）: "Focus" は「問題解決・創造的・精緻・身体的
+  タスク」向け、"Deep Work" は「フロー状態に入りタスクを片付ける」向けで
+  "smooth synthesized string, keyboard and wood notes, slow tempo, immersive background
+  harmony" と説明されている。"Create" は「創造的なフローを見つける」ためのカテゴリ
+- **言語処理を伴う創造的作業（ライティング）への示唆**: 「読解のような言語処理を要する
+  タスクは（アイデア出しのような）他の創造的タスクほど背景音楽の恩恵を受けない。
+  歌詞は言語処理中枢と競合する」という報告があり、**ライティングは「創造的」であっても
+  読解と同様に音楽的主張の強い刺激を避けるべき**と判断した
+- **音色（timbre）の感情価研究**: 明るい音色（高いスペクトル重心）ほど緊張性覚醒
+  （tension arousal）・エネルギー覚醒（energy arousal）が高くなり、低いスペクトル傾斜
+  ＋強い低次倍音は肯定的な感情価（valence）と結びつく。Study はさらに暗め（低覚醒・
+  高valence）に、Work はやや明るいが刺々しくない範囲に、という差別化の根拠にした
+- **音楽家に対する背景音楽の逆効果**（集中力を高める音の文献調査_gemini.md / BGM文献調査
+  で既出）: 自分が演奏・作曲する楽器がメインの音楽を聴くと、非音楽家より成績が著しく
+  低下する報告がある。Work のリズム/装飾音を控えめにした直接の根拠
+
+### 影響
+- `scripts/generate-placeholder-audio.mjs`: `generatePad` に `bodyResonanceHz`/
+  `bodyResonanceGain`、`generateTexture` に `warmLowpassHz` と `"room"` kind を追加
+- `apps/web/public/packs.json` / `packages/audio-engine/src/automation.ts`:
+  Study の `lowPassHz`、Work の `reverbWet`/`cellDensity`/texture takes を更新
+- `audio/work/texture_hum.wav` を `audio/work/texture_room.wav` に置き換え（ファイル名変更）
+
+---
+
 ## 併用する Web API
 
 | API | 用途 | Phase |
