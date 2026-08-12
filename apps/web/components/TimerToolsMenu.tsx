@@ -52,7 +52,11 @@ export function TimerToolsMenu({ tools, activeHref, anchor, onSelect, onClose }:
         aria-modal="true"
         aria-label="タイマーの種類を選択"
         className="fixed flex flex-col"
-        style={{ top: anchor.top, left: anchor.left, width: MENU_WIDTH, gap: RUNG_GAP, transform: "translateX(-50%)" }}
+        // 水平中央合わせは CSS の transform ではなく left の数値そのもので行う。
+        // motion.div は y/scale アニメーションのために transform を自前で管理しており、
+        // style.transform に translateX(-50%) を書いても framer-motion 側の transform で
+        // 上書きされて消えてしまう（結果、メニューがボタン中心から右にズレて表示されていた）。
+        style={{ top: anchor.top, left: anchor.left - MENU_WIDTH / 2, width: MENU_WIDTH, gap: RUNG_GAP }}
         initial={{ opacity: 0, y: -12, scale: 0.97 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -8, scale: 0.98 }}
