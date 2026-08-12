@@ -22,6 +22,24 @@ Endel 型の「機能性サウンドスケープ」とポモドーロ・タイ�
 | `03_ARCHITECTURE.md` | 技術選定 ADR・ディレクトリ構成 |
 | `04_SOUND_ENGINE.md` | **本プロジェクトの核**。生成BGMエンジンの詳細設計 |
 | `05_IMPLEMENTATION_PLAN.md` | Phase 0〜4 のタスク分解と受け入れ条件 |
+| `PHASE0_SPIKES.md` | Phase 0 の3スパイク（クロスフェード/バックグラウンド耐性/メモリ）の検証結果 |
+| `ASSET_LICENSES.md` | 音素材・IRのライセンス台帳 |
+| `research/` | サウンド設計の根拠にした外部文献調査（下記） |
+
+### `research/`（文献調査）
+
+音・BGMが集中力/リラックス/睡眠に与える影響について、実装着手前後に行った文献調査。
+`03_ARCHITECTURE.md` の ADR や `04_SOUND_ENGINE.md` の設計根拠から個別に参照されている。
+
+| ファイル | 内容 |
+|---|---|
+| `sound-environment-focus-chatgpt.md` | 音環境が集中力・作業効率に与える影響（ChatGPT Deep Research） |
+| `bgm-productivity-chatgpt.md` | 音楽・BGMが認知機能・生産性に与える影響（ChatGPT Deep Research） |
+| `relax-sleep-sound-chatgpt.md` | リラクゼーション・睡眠に対する音響刺激の効果（ChatGPT Deep Research） |
+| `focus-sound-literature-review-gemini.md` | 集中力・生産性を最大化する音響条件の文献レビュー（Gemini Deep Research） |
+| `focus-bgm-literature-review.md` | 集中力を最大化する音響条件に関する文献レビュー |
+| `environment-adaptive-sound.md` | 聴覚刺激とリラクゼーション/認知パフォーマンスの文献調査（環境軸の設計根拠、ADR-010） |
+| `relax-sleep-sound.md` | 聴覚刺激とリラクゼーション/認知パフォーマンスの文献調査（Relax/Sleep軸の設計根拠、ADR-008）※ `environment-adaptive-sound.md` と同一内容を別文脈向けに保持 |
 
 ---
 

@@ -132,7 +132,7 @@ rev.2 までは Home 画面に Study/Work/Relax/Sleep/Move の5カテゴリが�
 音は完全に同一だった（Pomodoro の Focus テーマ選択も同様に音へ反映されていなかった）。
 これは「テーマに合わせてすべてのサウンドを再構築する」という要求と両立しない。
 
-`docs/deep-research-report_chatGPT.md` と `集中力を高める音の文献調査_gemini.md` の
+`docs/research/sound-environment-focus-chatgpt.md` と `docs/research/focus-sound-literature-review-gemini.md` の
 文献調査により、テーマごとに以下が異なるべきだという根拠が得られた（詳細な数値と出典は
 `04_SOUND_ENGINE.md` §4 参照）:
 
@@ -303,7 +303,7 @@ PMC8829886（Endel 社のEEG研究）は「パーソナライズされた音は�
   （tension arousal）・エネルギー覚醒（energy arousal）が高くなり、低いスペクトル傾斜
   ＋強い低次倍音は肯定的な感情価（valence）と結びつく。Study はさらに暗め（低覚醒・
   高valence）に、Work はやや明るいが刺々しくない範囲に、という差別化の根拠にした
-- **音楽家に対する背景音楽の逆効果**（集中力を高める音の文献調査_gemini.md / BGM文献調査
+- **音楽家に対する背景音楽の逆効果**（docs/research/focus-sound-literature-review-gemini.md / BGM文献調査
   で既出）: 自分が演奏・作曲する楽器がメインの音楽を聴くと、非音楽家より成績が著しく
   低下する報告がある。Work のリズム/装飾音を控えめにした直接の根拠
 
@@ -319,7 +319,7 @@ PMC8829886（Endel 社のEEG研究）は「パーソナライズされた音は�
 ## ADR-008: Relax / Sleep を再構築する（音楽性の付与 + Sleep のフェーズ分け）
 
 ### 決定
-`deep-research-report_relux_chatGPT.md`（Cochraneレビュー・メタ解析中心の文献調査）に基づき、
+`docs/research/relax-sleep-sound-chatgpt.md`（Cochraneレビュー・メタ解析中心の文献調査）に基づき、
 Relax と Sleep を全面的に再設計した。
 
 1. **両テーマに「音楽性」を付与**: Study/Work/Move の打楽器的なキック（`generatePulse`）とは
@@ -467,7 +467,7 @@ Endel の公開設計方針（endel.io/science, endel.io/focus, endel.io/activit
 
 ### 決定
 Endel の「状況（位置・時刻・天気）に応じてサウンドスケープが変わる」という中核体験を、
-`環境による適切な音の変化.md`（聴覚刺激と認知パフォーマンス/リラクゼーションの文献調査）を
+`docs/research/environment-adaptive-sound.md`（聴覚刺激と認知パフォーマンス/リラクゼーションの文献調査）を
 踏まえて実装した。3つの軸を独立に計算し、合成して各テーマの `PhaseAutomation` に
 **控えめな補正**として上乗せする:
 
@@ -502,7 +502,7 @@ Endel の「状況（位置・時刻・天気）に応じてサウンドスケ�
   テーマの核となる音色・楽器編成・リズム構造（ADR-009）自体は一切変更しない
 
 ### 調べたこと
-- `環境による適切な音の変化.md`（聴覚刺激の包括的文献調査）: 「覚醒・気分仮説」
+- `docs/research/environment-adaptive-sound.md`（聴覚刺激の包括的文献調査）: 「覚醒・気分仮説」
   「確率共鳴」「無関連発話効果」など、本プロジェクトが既に採用している設計原則
   （ノイズ色の使い分け、拍の有無、歌詞なし等）の理論的裏付けを再確認した。
   この文献自体は「天気」を直接扱っていないが、「継続的な刺激への曝露は過剰になりうる」

@@ -123,8 +123,8 @@
       追加済み。エンジンはページ遷移をまたいで単一の AudioContext を共有するシングルトン設計
       （`apps/web/lib/soundscapeRuntime.ts`）。Break フェーズで無音になるバグ（フェーズ変化検出後に
       実際の遷移呼び出しを忘れていた）を発見・修正済み。
-      **rev.3（本セッション）**: `docs/deep-research-report_chatGPT.md` /
-      `集中力を高める音の文献調査_gemini.md` の文献調査をもとに、サウンドを「フェーズ(focus/break)」
+      **rev.3（本セッション）**: `docs/research/sound-environment-focus-chatgpt.md` /
+      `docs/research/focus-sound-literature-review-gemini.md` の文献調査をもとに、サウンドを「フェーズ(focus/break)」
       単位から「テーマ(5種)」単位に再構築（`docs/03_ARCHITECTURE.md` ADR-004）。Study/Work/Move/
       Relax/Sleep が音響的にも完全に別物になった（Home の選択にも Pomodoro の Focus テーマ選択にも
       実際に反映される。旧: 見た目の色だけが違って音は同一という状態だった）。ノイズ色を
@@ -162,7 +162,7 @@
       （`pause()` と揃えた。Home/停止ボタンで音がすっと減衰して止まるようにする要望）。
       TopNav（Home/Pomodoro/Credit）のホバー時の文字まわりの発光を拡大・強化
       （広がり幅・ぼかし半径・最大不透明度をいずれも底上げ）。
-      **rev.3.6**: `deep-research-report_relux_chatGPT.md` を踏まえ Relax/Sleep を全面
+      **rev.3.6**: `docs/research/relax-sleep-sound-chatgpt.md` を踏まえ Relax/Sleep を全面
       再構築（`docs/03_ARCHITECTURE.md` ADR-008）。両テーマに「音楽性をある程度」持たせる
       ため、打楽器的キックとは別の柔らかい旋律アルペジオを奏でる `generateArpeggioPulse`
       を新設し、pulse レイヤーとして追加（Relax: D Lydian 70bpm、Sleep: D Aeolian低音域
@@ -290,6 +290,25 @@
       Homeと同じ単一の3秒クロスフェードになる。chrome-devtools MCPでPomodoroのSOUND切替時の
       音声信号を150ms間隔でサンプリングし、無音への落ち込みや不連続なジャンプが無いことを
       確認済み。
+      **rev.6.7**: 「一般的なNext.jsの適切なフォルダ構成に整理してほしい」という要望を受け、
+      実装内容を一切変更せずファイル整理のみ実施した。`apps/web`（`app/`/`components/`/`hooks/`/
+      `lib/`/`public/`）自体は元から標準的な App Router 構成だったため変更なし。リポジトリ直下に
+      散らかっていた文献調査Markdown7本（ChatGPT/Gemini Deep Research の出力、日本語ファイル名
+      と英語ファイル名が混在）を `docs/research/` に集約し、内容に基づいた英語kebab-caseの名前
+      （例: `deep-research-report_chatGPT.md` → `docs/research/sound-environment-focus-chatgpt.md`）
+      へ改名。改名に伴い、コード内コメント・ADR文書からの参照（`CLAUDE.md`/`03_ARCHITECTURE.md`/
+      `04_SOUND_ENGINE.md`/`packages/audio-engine/src/{types,automation,environment}.ts`/
+      `scripts/generate-placeholder-audio.mjs`）もすべて新パスに追従させた
+      （`リラックスと睡眠用の音.md` と `環境による適切な音の変化.md` は中身が完全に同一だが、
+      未参照ファイルを断りなく削除しない方針のため両方とも保持し `relax-sleep-sound.md` /
+      `environment-adaptive-sound.md` として残した）。`docs/README.md` に `research/` の索引を追加。
+      未使用のブランディング素材2点（`Kairos.ico`/`Kairos_icon.png`、コードから未参照）は
+      `assets/branding/` へ移動。`packages/core`・`packages/audio-engine` は既に
+      フラットな `src/` 構成で pure TS パッケージとして適切だったため対象外。
+      移動・改名後に `pnpm --filter @kairos/core test`（29/29）・
+      `pnpm --filter @kairos/audio-engine test`（48/48）・`pnpm --filter @kairos/web build`・
+      `pnpm --filter @kairos/web lint` を実行し、いずれも成功することを確認済み
+      （差分はコメント文字列とファイル配置のみで、実装ロジックへの変更はゼロ）。
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
 

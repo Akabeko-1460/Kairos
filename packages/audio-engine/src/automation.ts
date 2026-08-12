@@ -213,7 +213,7 @@ export const moveAutomation: PhaseAutomation = {
 /**
  * Relax — 短い休憩。
  * 根拠: endel.io/relax — "don't include beats or complex sound textures — simple sound
- * structures that are easy for your brain to process"。deep-research-report_relux_chatGPT.md
+ * structures that are easy for your brain to process"。docs/research/relax-sleep-sound-chatgpt.md
  * の「60–80BPM・柔らかく単純な旋律」を踏まえ、ADR-008 で追加した柔らかい旋律アルペジオ
  * （`generateArpeggioPulse`、拍ではなく歌のようなフレーズ）は維持しつつ「ある程度の音楽性」を
  * 保った。
