@@ -112,9 +112,19 @@ export default function CreditPage() {
               サウンドスケープを選んで、ポモドーロと関係なく自由に流し続けられます。
             </li>
             <li>
-              <span className="text-foreground">Pomodoro</span> —
+              <span className="text-foreground">Timers</span> —
+              Pomodoro・Timer（カウントダウン）・Stopwatchの3つから選べます。
+            </li>
+            <li className="pl-4 text-xs text-muted/80">
+              <span className="text-foreground/80">Pomodoro</span> —
               プリセット（25/5・50/10、または独自のカスタム設定）を選んでセッションを開始します。
-              集中と休憩が自動で交互に切り替わり、フェーズ切替は音がクロスフェードして無音を挟みません。
+              プリセットは右クリックで削除でき（ビルトイン・カスタムとも）、集中と休憩は自動で
+              交互に切り替わり、フェーズ切替は音がクロスフェードして無音を挟みません。
+            </li>
+            <li className="pl-4 text-xs text-muted/80">
+              <span className="text-foreground/80">Timer / Stopwatch</span> —
+              選んだサウンドが設定画面に入った瞬間から鳴り続けます（「選ぶ＝鳴る」）。
+              Timerは好きな分数を指定してカウントダウンし、Stopwatchは経過時間を計測します。
             </li>
           </ul>
         </section>

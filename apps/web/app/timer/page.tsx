@@ -1,6 +1,7 @@
 "use client";
 
 import { FocusThemeSelector } from "@/components/FocusThemeSelector";
+import { NumberInput } from "@/components/NumberInput";
 import { TimerRing } from "@/components/TimerRing";
 import { VolumeSlider } from "@/components/VolumeSlider";
 import { useCountdownStore } from "@/hooks/useCountdown";
@@ -288,15 +289,11 @@ export default function TimerPage() {
                   );
                 })}
                 <label className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs text-muted">
-                  <input
-                    type="number"
+                  <NumberInput
                     min={1}
                     max={180}
                     value={Math.round(state.durationMs / 60_000)}
-                    onChange={(e) => {
-                      const min = Number(e.target.value);
-                      if (Number.isFinite(min) && min > 0) setDurationMs(min * 60_000);
-                    }}
+                    onChange={(min) => setDurationMs(min * 60_000)}
                     className="w-10 bg-transparent text-center text-foreground focus:outline-none"
                     aria-label="カスタムの分数"
                   />

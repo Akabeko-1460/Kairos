@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState, type FormEvent } from "react";
+import { NumberInput } from "./NumberInput";
 
 interface CustomPresetModalProps {
   onClose: () => void;
@@ -18,38 +19,18 @@ interface FieldProps {
 }
 
 // 数値入力。ガラスのように透けたトラック内に置くため、枠線ではなく下線＋淡いフォーカスグローで見せる。
-//
-// クリックした瞬間に表示を空にし、自由に半角数字を打ち込めるようにする（既存の数字を
-// 選択・削除してから打ち直す手間をなくす）。矢印キーでの増減は type="number" のネイティブ
-// 挙動にそのまま任せる（スピンボタンの見た目だけを .no-spinner で消す。CSSで見た目を消しても
-// キーボード操作の increment/decrement 自体は消えない）。何も入力せずに他へフォーカスを
-// 移した場合は、親のstateを一切更新していないため表示が自動的に元の値へ戻る。
+// クリックで空にして自由入力できる挙動自体は共有コンポーネント NumberInput が持つ。
 function NumberField({ label, name, value, min, max, onChange }: FieldProps) {
-  // null の間は「未編集」= value をそのまま表示する。文字列が入っている間は編集中の下書き。
-  const [draft, setDraft] = useState<string | null>(null);
-  const displayValue = draft ?? String(value);
-
-  const handleChange = (raw: string) => {
-    setDraft(raw);
-    if (raw.trim() === "") return; // 空の間は親のstateを更新しない(=まだ確定させない)
-    const parsed = Number(raw);
-    if (Number.isFinite(parsed) && parsed > 0) onChange(parsed);
-  };
-
   return (
     <label className="flex items-center justify-between gap-4 text-xs text-muted">
       <span>{label}</span>
-      <input
-        type="number"
-        inputMode="numeric"
+      <NumberInput
         name={name}
         min={min}
         max={max}
-        value={displayValue}
-        onFocus={() => setDraft("")}
-        onChange={(e) => handleChange(e.target.value)}
-        onBlur={() => setDraft(null)}
-        className="no-spinner w-20 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-right text-sm text-foreground outline-none transition-colors focus:border-white/30 focus:bg-white/[0.07]"
+        value={value}
+        onChange={onChange}
+        className="w-20 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-right text-sm text-foreground outline-none transition-colors focus:border-white/30 focus:bg-white/[0.07]"
       />
     </label>
   );
@@ -112,7 +93,7 @@ export function CustomPresetModal({ onClose, onCreate }: CustomPresetModalProps)
               <NumberField label="Focus（分）" name="focusMinutes" min={1} max={180} value={focusMinutes} onChange={setFocusMinutes} />
               <NumberField label="Break（分）" name="breakMinutes" min={1} max={60} value={breakMinutes} onChange={setBreakMinutes} />
               <NumberField
-                label="長い休憩までのラウンド数"
+                label="ラウンド数"
                 name="roundsBeforeLongBreak"
                 min={1}
                 max={12}

@@ -371,6 +371,17 @@
       外れた場合はコミットされない）。chrome-devtools MCPでクリック時に空になること、
       入力後に確定した値が残ること、空のままフォーカスを外すと元の値に戻ること、
       矢印キーでの増減が引き続き機能することを確認済み。
+      **rev.6.12**: rev.6.11の数値入力の挙動を`apps/web/components/NumberInput.tsx`として
+      切り出し、`CustomPresetModal`とTimerのカスタム分数入力（`apps/web/app/timer/page.tsx`、
+      従来は素の`<input type="number">`に個別のonChangeロジックを書いていた）の両方で共有する
+      ようにした（「今の修正はTimerの時間設定にも適応してください」という要望）。
+      あわせて`CustomPresetModal`の「長い休憩までのラウンド数」ラベルを「ラウンド数」に短縮。
+      Creditページの「使い方」がHome/Pomodoroの2項目のみで、Timer/Stopwatch追加（rev.6）
+      以降ずっと未反映だったのを機に更新し、Timers配下がPomodoro/Timer/Stopwatchの3択で
+      あること、Presetが右クリックでビルトイン・カスタムとも削除できること、Timer/Stopwatch
+      が「選ぶ＝鳴る」であることを追記した。chrome-devtools MCPでTimerのカスタム分数入力が
+      CustomPresetModalと同じ挙動（クリックで空になる/入力値の即時反映/空のままフォーカスを
+      外すと元の値に戻る）をすることを確認済み。
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
 
