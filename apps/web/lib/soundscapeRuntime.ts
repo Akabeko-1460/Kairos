@@ -98,6 +98,11 @@ let engine: SoundscapeEngine | null = null;
 let engineInitPromise: Promise<SoundscapeEngine> | null = null;
 let loopStarted = false;
 let currentThemeIdRef: ThemeId | null = null;
+// playFreeplay() の重複呼び出し（SOUND選択クリックと設定画面プレビューeffectがほぼ同時に
+// 同じテーマを要求する等）で begin()/transitionTo() を二重に走らせないための in-flight ガード。
+// これが無いと、本来3秒かけて滑らかに変わるはずのクロスフェードが数百ms差で2つ重なり、
+// 「ゆっくり変わる」はずが唐突に音が変わったように聞こえてしまう（下記 playFreeplay 参照）。
+let pendingFreeplayThemeId: ThemeId | null = null;
 let transitionArmed = false;
 let wasPaused = false;
 // Sleep のフリー再生専用の経過時間トラッカー（ADR-008）。playFreeplay("sleep") で 0 にリセットする。
@@ -306,6 +311,16 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     setFocusThemeId: (id) => set({ focusThemeId: id }),
 
     playFreeplay: async (themeId) => {
+      // 同じテーマへの重複呼び出し（SOUND選択のクリックと設定画面プレビューeffectがほぼ
+      // 同時に同じテーマを要求する等）で begin()/transitionTo() を二重に走らせない。
+      // 二重に走ると、本来3秒かけて滑らかに変わるはずのクロスフェードが数百ms差で重なり、
+      // 「ゆっくり変わる」はずが唐突に音が変わったように聞こえてしまう。既に同じテーマへ
+      // 向かっている/到達済みなら、実際の再生要求は送らず状態フラグだけ揃えて抜ける。
+      if (pendingFreeplayThemeId === themeId) {
+        set({ mode: "freeplay", freeplayThemeId: themeId, freeplayPlaying: true });
+        return;
+      }
+      pendingFreeplayThemeId = themeId;
       const e = await get().ensureEngine();
       set({ mode: "freeplay", freeplayThemeId: themeId, freeplayPlaying: true });
       // 新しく再生を始めるたびに「入眠しなおす」ものとして経過時間をリセットする
@@ -321,6 +336,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
         currentThemeIdRef = themeId;
       } catch (err) {
         logEngineError(err);
+        pendingFreeplayThemeId = null; // 失敗時は再試行できるようにする
       }
     },
 
@@ -351,6 +367,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
       set({ mode: "idle", freeplayThemeId: null, freeplayPlaying: false });
       void e.stop().catch(logEngineError);
       currentThemeIdRef = null;
+      pendingFreeplayThemeId = null;
       freeplaySleepElapsedSec = 0;
       freeplaySleepLastTickAtMs = null;
       resetEnvironmentSession();

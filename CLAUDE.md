@@ -274,6 +274,22 @@
       Timer/Stopwatch と同じ suspended状態のヒント文言・エラーメッセージ表示も追加。
       chrome-devtools MCP でPomodoro画面遷移直後・SOUND切替後の両方で実際の音声信号
       （RMS/ピークとも非ゼロ、AudioContext常に1個）を確認済み。
+      **rev.6.6**: 「Pomodoro/TimerのSOUND切替がHomeと違って唐突に変わる（ゆっくり変わらない）」
+      という報告を受け、`playFreeplay()`（`apps/web/lib/soundscapeRuntime.ts`）に呼び出しが
+      重なる競合状態を発見・修正した。Pomodoro/TimerのSOUND選択ボタンは、クリック直後に
+      呼ばれるクリックハンドラと、設定画面プレビュー用の`useEffect`（同じテーマIDを見て
+      再生する）の**両方**からほぼ同時に`playFreeplay(id)`が呼ばれうる構造になっており、
+      `engine.begin()`/`transitionTo()`が数百ms差で二重に走ることで、本来3秒かけて
+      滑らかに変わるはずの等パワークロスフェードが2つ重なって唐突な変化に聞こえていた
+      （Home は同種のプレビューeffectを持たずクリックの1経路しかないため、この競合が
+      そもそも起こらなかった）。個々のReact effect/handlerのタイミングを精密に
+      揃えるのではなく、共有ランタイム層に `pendingFreeplayThemeId` という in-flight
+      ガードを追加し、同じテーマへの重複呼び出しは実際の再生要求を送らず状態フラグだけ
+      揃えて抜けるようにした。呼び出し元（クリックハンドラ／プレビューeffect／Reset時の
+      即時再生）を個別に調整する必要がなく、Pomodoro/Timer/Stopwatchのどの経路からでも
+      Homeと同じ単一の3秒クロスフェードになる。chrome-devtools MCPでPomodoroのSOUND切替時の
+      音声信号を150ms間隔でサンプリングし、無音への落ち込みや不連続なジャンプが無いことを
+      確認済み。
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
 
