@@ -1,5 +1,6 @@
 import { BufferLoader } from "./buffer-loader";
 import { equalPowerCurve } from "./equal-power";
+import { NEUTRAL_ENVIRONMENT, type EnvironmentModifier } from "./environment";
 import { createCompressorLimiter, type Limiter } from "./limiter";
 import { PhaseGraph } from "./phase-graph";
 import type { LayerRole, SoundPack, ThemeId } from "./types";
@@ -97,11 +98,16 @@ export class SoundscapeEngine {
     graph.scheduleMasterFade(equalPowerCurve(true), now, 1.5);
   }
 
-  /** useTimer から約10Hzで呼ばれる。t は 0.0–1.0。 */
-  tick(t: number): void {
+  /**
+   * useTimer から約10Hzで呼ばれる。t は 0.0–1.0。
+   * environment は天気/時間帯/経過時間による補正（docs/03_ARCHITECTURE.md ADR-010）。
+   * 呼び出し側（apps/web/lib/soundscapeRuntime.ts）が `smoothEnvironment` でなだらかに
+   * 近づけた値を渡す想定で、ここでは受け取ってそのまま PhaseGraph に渡すだけ。
+   */
+  tick(t: number, environment: EnvironmentModifier = NEUTRAL_ENVIRONMENT): void {
     if (!this.ctx || !this.currentGraph) return;
     this.lastT = t;
-    this.currentGraph.tick(t, this.ctx.currentTime);
+    this.currentGraph.tick(t, this.ctx.currentTime, environment);
   }
 
   /** 次テーマへ等パワークロスフェード。無音を挟まない。テーマ変更（例: Study→Work）にも使う。 */

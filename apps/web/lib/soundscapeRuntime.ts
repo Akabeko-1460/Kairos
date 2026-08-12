@@ -1,6 +1,17 @@
 "use client";
 
-import { RECOMMENDED_TRANSITION_T, SoundscapeEngine, type SoundPack, type ThemeId } from "@kairos/audio-engine";
+import {
+  NEUTRAL_ENVIRONMENT,
+  RECOMMENDED_TRANSITION_T,
+  smoothEnvironment,
+  SoundscapeEngine,
+  targetEnvironmentModifier,
+  timeOfDayFor,
+  type EnvironmentModifier,
+  type SoundPack,
+  type ThemeId,
+  type WeatherCategory,
+} from "@kairos/audio-engine";
 import {
   isPaused,
   isRunning,
@@ -11,6 +22,7 @@ import {
 } from "@kairos/core";
 import { create } from "zustand";
 import { useTimerStore } from "@/hooks/useTimer";
+import { fetchWeatherCategory } from "@/lib/environment";
 
 const TICK_INTERVAL_MS = 100; // 10Hz。docs/03_ARCHITECTURE.md の useTimer -> SoundscapeEngine 結合点。
 const CROSSFADE_SEC = 6;
@@ -89,6 +101,62 @@ let wasPaused = false;
 let freeplaySleepElapsedSec = 0;
 let freeplaySleepLastTickAtMs: number | null = null;
 
+// --- 天気・時間帯・経過時間による環境モジュレーション（ADR-010） ---
+const WEATHER_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30分ごとに再取得すれば十分（天気は数分単位では変わらない）
+let currentWeather: WeatherCategory | null = null;
+let weatherFetchedAtMs: number | null = null;
+let weatherFetchInFlight = false;
+/** 音を鳴らし始めてからの実時間の起点。Pomodoroのフェーズをまたいでも積算し続け、完全に停止したらリセットする。 */
+let environmentSessionStartedAtMs: number | null = null;
+let smoothedEnvironment: EnvironmentModifier = NEUTRAL_ENVIRONMENT;
+let environmentLastTickAtMs: number | null = null;
+
+function ensureWeatherFresh(): void {
+  const now = Date.now();
+  if (weatherFetchInFlight) return;
+  if (weatherFetchedAtMs !== null && now - weatherFetchedAtMs < WEATHER_REFRESH_INTERVAL_MS) return;
+  weatherFetchInFlight = true;
+  weatherFetchedAtMs = now; // フェッチ中に再度呼ばれても二重発火しないよう先に更新しておく
+  void fetchWeatherCategory()
+    .then((category) => {
+      currentWeather = category;
+    })
+    .finally(() => {
+      weatherFetchInFlight = false;
+    });
+}
+
+function ensureEnvironmentSessionStarted(): void {
+  if (environmentSessionStartedAtMs === null) environmentSessionStartedAtMs = Date.now();
+}
+
+function resetEnvironmentSession(): void {
+  environmentSessionStartedAtMs = null;
+  smoothedEnvironment = NEUTRAL_ENVIRONMENT;
+  environmentLastTickAtMs = null;
+}
+
+/**
+ * 毎ティック呼ぶ。天気の鮮度確認、目標値の算出、なだらかな追従（smoothEnvironment）までを行う。
+ * 「ゆっくりなだらかに切り替える」の実体はここ — 天気や時間帯が変わっても瞬時には動かない。
+ */
+function tickEnvironment(): EnvironmentModifier {
+  ensureWeatherFresh();
+  const now = Date.now();
+  const dtSec = environmentLastTickAtMs === null ? 0 : (now - environmentLastTickAtMs) / 1000;
+  environmentLastTickAtMs = now;
+
+  const sessionElapsedSec =
+    environmentSessionStartedAtMs === null ? 0 : (now - environmentSessionStartedAtMs) / 1000;
+  const target = targetEnvironmentModifier({
+    weather: currentWeather,
+    timeOfDay: timeOfDayFor(new Date(now)),
+    sessionElapsedSec,
+  });
+  smoothedEnvironment = smoothEnvironment(smoothedEnvironment, target, dtSec);
+  return smoothedEnvironment;
+}
+
 export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) => {
   function startLoopOnce(): void {
     if (loopStarted) return;
@@ -115,6 +183,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
           if (currentThemeIdRef !== null) void engine.stop().catch(logEngineError);
           currentThemeIdRef = null;
           transitionArmed = false;
+          resetEnvironmentSession();
           set({ debugInfo: engine.getDebugInfo() });
           return;
         }
@@ -126,19 +195,24 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
           const isFirstTheme = currentThemeIdRef === null;
           currentThemeIdRef = themeId;
           transitionArmed = false;
-          if (isFirstTheme) void engine.begin(themeId, state.sessionSeed).catch(logEngineError);
-          else void engine.transitionTo(themeId, state.sessionSeed, CROSSFADE_SEC).catch(logEngineError);
+          if (isFirstTheme) {
+            ensureEnvironmentSessionStarted();
+            void engine.begin(themeId, state.sessionSeed).catch(logEngineError);
+          } else {
+            void engine.transitionTo(themeId, state.sessionSeed, CROSSFADE_SEC).catch(logEngineError);
+          }
           set({ debugInfo: engine.getDebugInfo() });
           return;
         }
 
         if (!isRunning(state)) {
+          environmentLastTickAtMs = null; // 一時停止中はdtを積算せず、再開時に大きな飛びが出ないようにする
           set({ debugInfo: engine.getDebugInfo() });
           return;
         }
 
         const t = progress(state, now);
-        engine.tick(t);
+        engine.tick(t, tickEnvironment());
         set({ debugInfo: engine.getDebugInfo() });
 
         if (!transitionArmed && t >= RECOMMENDED_TRANSITION_T) {
@@ -155,6 +229,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
 
       if (mode === "freeplay") {
         if (get().freeplayPlaying) {
+          const environment = tickEnvironment();
           if (get().freeplayThemeId === "sleep") {
             // ADR-008: 実経過時間を積算して t を進める。バックグラウンドタブでこの
             // setInterval 自体の発火が間引かれても、Date.now() の差分を足すので
@@ -164,13 +239,14 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
               freeplaySleepElapsedSec += (now - freeplaySleepLastTickAtMs) / 1000;
             }
             freeplaySleepLastTickAtMs = now;
-            engine.tick(Math.min(1, freeplaySleepElapsedSec / SLEEP_VIRTUAL_DURATION_SEC));
+            engine.tick(Math.min(1, freeplaySleepElapsedSec / SLEEP_VIRTUAL_DURATION_SEC), environment);
           } else {
             freeplaySleepLastTickAtMs = null;
-            engine.tick(FREEPLAY_T);
+            engine.tick(FREEPLAY_T, environment);
           }
         } else {
           freeplaySleepLastTickAtMs = null; // 一時停止中は経過時間を進めない
+          environmentLastTickAtMs = null; // 一時停止中はdtを積算せず、再開時に大きな飛びが出ないようにする
         }
         set({ debugInfo: engine.getDebugInfo() });
         return;
@@ -218,6 +294,9 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
       // （テーマの切り替えでも、Sleep をもう一度選び直した場合でも同様）。
       freeplaySleepElapsedSec = 0;
       freeplaySleepLastTickAtMs = null;
+      // ADR-010: こちらは「音を鳴らし始めてからの経過時間」軸のセッション開始。テーマの
+      // 切り替え（Study→Work等）では継続して積算したいので、既に始まっていればリセットしない。
+      ensureEnvironmentSessionStarted();
       try {
         // begin() は currentGraph が既にあれば自動でクロスフェードに切り替える。
         await e.begin(themeId, Date.now());
@@ -256,6 +335,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
       currentThemeIdRef = null;
       freeplaySleepElapsedSec = 0;
       freeplaySleepLastTickAtMs = null;
+      resetEnvironmentSession();
     },
 
     setMasterVolume: (v) => {

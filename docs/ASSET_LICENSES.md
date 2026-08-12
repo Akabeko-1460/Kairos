@@ -54,6 +54,12 @@ ADR-005）。
 | `audio/relax/pulse_*.wav`, `audio/sleep/pulse_*.wav` | Pulse（柔らかい旋律アルペジオ） | 同上（`generateArpeggioPulse`、ADR-008/ADR-009） | 権利者なし | 「音楽性をある程度」持たせる要望に対し、スケール内の音程を辿るフレーズを生成。テーマの調に正確なピッチが必要なため合成 |
 | `ir/*.wav` | インパルス応答 | 同上（減衰ホワイトノイズによる合成IR） | 権利者なし | 本番は実測IR or 権利確認済みの公開IRライブラリに差し替える |
 
+## 外部API（音素材ではないが、ADR-010 の方針に沿ってここに記録する）
+
+| API | 用途 | 出所URL | ライセンス/利用条件 | 備考 |
+|---|---|---|---|---|
+| Open-Meteo Weather API | 天気カテゴリの取得（`apps/web/lib/environment.ts`） | https://open-meteo.com/ | 非商用利用は無料・APIキー不要。データは CC BY 4.0 | 商用化する場合は https://open-meteo.com/en/pricing の条件を確認すること |
+
 ## 本番差し替え時のチェックリスト（docs/CLAUDE.md 禁止事項より）
 
 - [ ] 生成に使ったAIサービス名とプラン（無料/商用利用可否）を記録する

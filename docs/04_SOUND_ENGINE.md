@@ -315,6 +315,34 @@ t が進む（`apps/web/lib/soundscapeRuntime.ts` の `SLEEP_VIRTUAL_DURATION_SE
 | Cell 発火頻度 | 約14秒に1回 | 約10秒に1回 | 約4.5秒に1回 | 約29–50秒に1回 | 約33秒（Onset）→約4分（Deep）に1回 |
 | Pomodoro での役割 | Focus（選択可） | Focus（選択可・既定） | Focus（選択可） | shortBreak（固定） | longBreak（固定）／Home フリー再生（実時間でフェーズ進行、ADR-008） |
 
+### 4.7 状況適応レイヤー（天気・時間帯・経過時間、`03_ARCHITECTURE.md` ADR-010）
+
+§4.1–4.6 の `PhaseAutomation` はテーマ・t だけで決まる**基準値**。rev.5（ADR-010）で、
+そこに天気・時間帯・経過時間による**控えめな補正**（`EnvironmentModifier`）を上乗せできる
+ようにした。`PhaseGraph.tick(t, now, environment)` の第3引数で、テーマの基準値を保ったまま
+状況に応じて微調整する。
+
+```
+最終値 = PhaseAutomation(t) の基準値 × / + EnvironmentModifier
+```
+
+| 軸 | 判定材料 | 効いてくるパラメータ |
+|---|---|---|
+| 天気 | Geolocation + Open-Meteo（`apps/web/lib/environment.ts`）を4カテゴリに単純化 | lowPassFactor、reverbWetDelta、rainOverlayGain（雨のときだけ既存の `texture_rain.wav` を全テーマ共通で薄く重ねる） |
+| 時間帯 | 端末のローカル時刻（朝5–11時/昼11–17時/晩17–5時） | lowPassFactor、reverbWetDelta、padGain |
+| 経過時間 | 音を鳴らし始めてからの実時間（Pomodoroのフェーズをまたいで積算） | pulseGain、cellDensityFactor（45分を超えたら3時間かけて最大18%まで緩やかに減衰） |
+
+**「ゆっくりなだらかに切り替える」の実装**: `targetEnvironmentModifier()` が計算するのは
+あくまで瞬間の目標値。`apps/web/lib/soundscapeRuntime.ts` が毎ティック
+`smoothEnvironment(current, target, dtSec, τ=90秒)` で指数的に近づけてから
+`engine.tick()` に渡す。天気が変わっても数分かけてなじむように聞こえる。
+
+**「気分に合わせる」の解釈**（ユーザー指摘、ADR-010 に詳細）: 気分に**似た**音を流すのではなく、
+そのテーマが導きたい心理状態を壊さない範囲で彩りを加える。そのため全軸の効果量は
+控えめ（目安 ±20%以内）に設計し、`environment.ts` の `clampModifier` で3軸合成後の値にも
+最終的な安全域を設けている。天気・時間帯でテーマの拍構造や楽器編成（§4.1–4.6）自体が
+変わることはない。
+
 ---
 
 ## 5. 主要インターフェース
@@ -343,6 +371,33 @@ export interface PhaseAutomation {
 /** 純粋関数。ユニットテストの主対象。 */
 export function valueAt(kf: Keyframes, t: number): number;
 
+/** 天気・時間帯・経過時間による補正（§4.7、ADR-010）。gain系は乗算、reverbWetDeltaは加算。 */
+export interface EnvironmentModifier {
+  readonly padGain: number;
+  readonly textureGain: number;
+  readonly pulseGain: number;
+  readonly cellDensityFactor: number;
+  readonly reverbWetDelta: number;
+  readonly lowPassFactor: number;
+  readonly rainOverlayGain: number;
+}
+
+export type WeatherCategory = 'clear' | 'cloudy' | 'rain' | 'snow';
+export type TimeOfDay = 'morning' | 'noon' | 'evening';
+
+/** 純粋関数群。3軸から目標値を合成し(targetEnvironmentModifier)、なだらかに近づける(smoothEnvironment)。 */
+export function targetEnvironmentModifier(ctx: {
+  weather: WeatherCategory | null;
+  timeOfDay: TimeOfDay;
+  sessionElapsedSec: number;
+}): EnvironmentModifier;
+export function smoothEnvironment(
+  current: EnvironmentModifier,
+  target: EnvironmentModifier,
+  dtSec: number,
+  tauSec?: number,
+): EnvironmentModifier;
+
 /** 1テーマ分の音響定義。automation を内包するので、テーマごとに完全に独立して設計できる。 */
 export interface ThemeSoundDefinition {
   readonly kind: ThemeKind;
@@ -370,8 +425,11 @@ export interface SoundscapeEngine {
   /** テーマ再生開始。seed で音の展開を決定的にする。 */
   begin(theme: ThemeId, seed: number): Promise<void>;
 
-  /** useTimer から約10Hzで呼ばれる。t は 0.0–1.0。 */
-  tick(t: number): void;
+  /**
+   * useTimer から約10Hzで呼ばれる。t は 0.0–1.0。
+   * environment は天気/時間帯/経過時間による控えめな補正（§4.7、ADR-010）。省略時は無補正。
+   */
+  tick(t: number, environment?: EnvironmentModifier): void;
 
   /** 次テーマへ等パワークロスフェード。無音を挟まない（フェーズ遷移にもテーマ変更にも使う）。 */
   transitionTo(next: ThemeId, seed: number, crossfadeSec?: number): Promise<void>;

@@ -2,6 +2,7 @@ import { OfflineAudioContext } from "node-web-audio-api";
 import { describe, expect, it } from "vitest";
 import { hasClipping, rms } from "./analysis";
 import { BufferLoader } from "./buffer-loader";
+import { NEUTRAL_ENVIRONMENT } from "./environment";
 import { PhaseGraph } from "./phase-graph";
 import type { PhaseAutomation, ThemeSoundDefinition } from "./types";
 
@@ -103,6 +104,83 @@ describe("PhaseGraph pad ensemble (ADR-006 harmonic drift)", () => {
     const tailStart = 5 * SAMPLE_RATE;
     expect(rms(data.subarray(tailStart))).toBeGreaterThan(0.001);
 
+    graph.dispose();
+  });
+});
+
+describe("PhaseGraph environment modulation (ADR-010)", () => {
+  async function renderWithEnvironment(rainOverlayGain: number): Promise<Float32Array> {
+    const ctx = new OfflineAudioContext(1, 2 * SAMPLE_RATE, SAMPLE_RATE);
+    const bufferLoader = new BufferLoader(ctx as unknown as BaseAudioContext);
+    // 雨オーバーレイも含め、どの URL も同じノイズバッファへ差し替える
+    // （BufferLoader.load は addEnvironmentRainLayer 用の呼び出しにも使われるため）。
+    const noiseBuffer = makeNoiseBuffer(ctx, 2, 0.3);
+    bufferLoader.load = async () => noiseBuffer;
+    bufferLoader.loadAll = async (urls: readonly string[]) => urls.map(() => makeSineBuffer(ctx, 220, 2));
+
+    const themeDef: ThemeSoundDefinition = {
+      kind: "focus",
+      key: "A",
+      scale: "aeolian",
+      bpm: null,
+      ir: "/ir/fake.wav",
+      layers: [{ role: "pad", loopSeconds: 2, takes: ["/a.wav"] }],
+      automation,
+    };
+
+    const graph = await PhaseGraph.create({
+      ctx: ctx as unknown as BaseAudioContext,
+      bufferLoader,
+      themeDef,
+      seed: 7,
+      startAt: 0,
+      output: ctx.destination,
+    });
+
+    graph.scheduleMasterFade(new Float32Array([1, 1]), 0, 0.01);
+    graph.tick(0.5, 0, { ...NEUTRAL_ENVIRONMENT, rainOverlayGain });
+
+    const rendered = await ctx.startRendering();
+    graph.dispose();
+    return rendered.getChannelData(0);
+  }
+
+  it("raises the audible level when rainOverlayGain is turned up, without clipping", async () => {
+    const withoutRain = await renderWithEnvironment(0);
+    const withRain = await renderWithEnvironment(0.18); // clampModifier の上限に近い値
+    expect(hasClipping(withRain)).toBe(false);
+    expect(rms(withRain)).toBeGreaterThan(rms(withoutRain));
+  });
+
+  it("defaults to NEUTRAL_ENVIRONMENT (no rain overlay) when tick() omits the argument", async () => {
+    const ctx = new OfflineAudioContext(1, 2 * SAMPLE_RATE, SAMPLE_RATE);
+    const bufferLoader = new BufferLoader(ctx as unknown as BaseAudioContext);
+    const noiseBuffer = makeNoiseBuffer(ctx, 2, 0.3);
+    bufferLoader.load = async () => noiseBuffer;
+    bufferLoader.loadAll = async (urls: readonly string[]) => urls.map(() => makeSineBuffer(ctx, 220, 2));
+
+    const themeDef: ThemeSoundDefinition = {
+      kind: "focus",
+      key: "A",
+      scale: "aeolian",
+      bpm: null,
+      ir: "/ir/fake.wav",
+      layers: [{ role: "pad", loopSeconds: 2, takes: ["/a.wav"] }],
+      automation,
+    };
+
+    const graph = await PhaseGraph.create({
+      ctx: ctx as unknown as BaseAudioContext,
+      bufferLoader,
+      themeDef,
+      seed: 7,
+      startAt: 0,
+      output: ctx.destination,
+    });
+
+    graph.scheduleMasterFade(new Float32Array([1, 1]), 0, 0.01);
+    // 第3引数を省略しても例外にならず、環境補正なし（NEUTRAL_ENVIRONMENT）として動作すること。
+    expect(() => graph.tick(0.5, 0)).not.toThrow();
     graph.dispose();
   });
 });

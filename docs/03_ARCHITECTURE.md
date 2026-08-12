@@ -463,6 +463,89 @@ Endel の公開設計方針（endel.io/science, endel.io/focus, endel.io/activit
 
 ---
 
+## ADR-010: 天気・時間帯・経過時間で音を状況適応させる（Endel的な自動性）
+
+### 決定
+Endel の「状況（位置・時刻・天気）に応じてサウンドスケープが変わる」という中核体験を、
+`環境による適切な音の変化.md`（聴覚刺激と認知パフォーマンス/リラクゼーションの文献調査）を
+踏まえて実装した。3つの軸を独立に計算し、合成して各テーマの `PhaseAutomation` に
+**控えめな補正**として上乗せする:
+
+1. **天気**（ブラウザの Geolocation API + [Open-Meteo](https://open-meteo.com/)、APIキー不要）
+2. **時間帯**（朝 5–11時 / 昼 11–17時 / 晩 17–5時、端末のローカル時刻）
+3. **音を流している経過時間**（Pomodoroのフェーズをまたいで積算する、セッションの長さ）
+
+いずれの変化も「ゆっくりなだらかに切り替える」（指数平滑化、τ=90秒）。
+
+**音源は新規に作らず、既存のセットのみを使う**という要求に対し、天気を4カテゴリ
+（clear/cloudy/rain/snow）に単純化した上で、次のように**既存パラメータと既存アセットのみ**で表現した:
+
+| 軸 | 実装方法 | 新規音源 |
+|---|---|---|
+| 天気=rain | 既存の `audio/relax/texture_rain.wav`（Wikimedia Commons, Public Domain）を全テーマ共通のオーバーレイ層として薄く重ねる | なし（既存アセットの再利用） |
+| 天気=snow | 積雪の遮音効果を模し、`lowPassFactor` を大きく下げて「こもった静かな世界」にする | なし（既存パラメータのみ） |
+| 天気=clear/cloudy | `lowPassFactor` の微調整のみ | なし |
+| 時間帯 | 朝=明るく、晩=暗く暖かく、昼=無補正。`lowPassFactor`/`reverbWetDelta`/`padGain` の微調整のみ | なし |
+| 経過時間 | 45分を超えたら3時間かけて `pulseGain`/`cellDensityFactor` を最大18%緩やかに絞る（聴取疲労対策） | なし |
+
+### 「気分に合わせる」の解釈
+ユーザーからの明示的な指摘: **「気分に合わせるというのは、気分に似た音を流すことではなく、
+そのサウンドで行うタスクに適切な心理状態に導くこと」**。これを設計の中心原則にした。
+たとえば雨の日でも Study/Work のリズム・密度を大きく削って「しんみりした音」にはしない
+（読解・作業に必要な覚醒度を壊すため）。そのため:
+
+- 各軸の効果量はいずれも小さい（目安 ±20%以内）に抑えた
+- 3軸を合成しても安全域を外れないよう `environment.ts` の `clampModifier` で最終的にクランプする
+  （`padGain`∈[0.85,1.15]、`pulseGain`/`cellDensityFactor`∈[0.7〜0.75, 1.15〜1.2]、
+  `lowPassFactor`∈[0.65,1.25]、`reverbWetDelta`∈[-0.05,0.08]、`rainOverlayGain`∈[0,0.2]）
+- 天気・時間帯オーバーレイは常に「彩り」（lowPass・reverb・微量のゲイン）であり、
+  テーマの核となる音色・楽器編成・リズム構造（ADR-009）自体は一切変更しない
+
+### 調べたこと
+- `環境による適切な音の変化.md`（聴覚刺激の包括的文献調査）: 「覚醒・気分仮説」
+  「確率共鳴」「無関連発話効果」など、本プロジェクトが既に採用している設計原則
+  （ノイズ色の使い分け、拍の有無、歌詞なし等）の理論的裏付けを再確認した。
+  この文献自体は「天気」を直接扱っていないが、「継続的な刺激への曝露は過剰になりうる」
+  という論旨（確率共鳴のスイートスポット、処理流暢性の低下、CLASの睡眠保護目的の減衰など）を、
+  「経過時間による緩やかな刺激の減衰」という設計に応用した
+- **Open-Meteo**: APIキー不要・無料・商用利用可（CC BY 4.0 でデータ提供、コード添付は必須ではないが
+  クレジット表示が望ましいとされる）の天気API。`docs/ASSET_LICENSES.md` に外部API利用として記録
+- **Endel の実際の挙動**（`01_ENDEL_RESEARCH.md`、endel.io/science）: 「時刻・天気・場所によって
+  同じモードでも異なる音になる」という説明があり、これが「Endelのように」という要望の核心
+
+### 影響
+- `packages/audio-engine/src/environment.ts`（新規）: `WeatherCategory`/`TimeOfDay`/
+  `EnvironmentContext`/`EnvironmentModifier` と、`weatherCategoryFromWmoCode`/`timeOfDayFor`/
+  `targetEnvironmentModifier`/`smoothEnvironment` の純粋関数群。副作用ゼロ、Date注入可能
+- `packages/audio-engine/src/phase-graph.ts`: `tick(t, now, environment)` が
+  pad/texture/pulse/lowPassHz/reverbWet に補正を適用。全テーマ共通の雨オーバーレイ層
+  （`addEnvironmentRainLayer`）を追加。`currentCellDensity()` も補正後の値を返す
+- `packages/audio-engine/src/engine.ts`: `tick(t, environment?)` で下流に伝搬するだけ
+  （`environment` 省略時は `NEUTRAL_ENVIRONMENT` で従来どおり無補正）
+- `apps/web/lib/environment.ts`（新規）: Geolocation + Open-Meteo による天気取得。
+  失敗（許可拒否・オフライン・API障害）時は例外を投げず `null` を返し、時間帯のみへ自然に
+  フォールバックする
+- `apps/web/lib/soundscapeRuntime.ts`: 天気を30分ごとに再取得、`sessionElapsedSec` を
+  Pomodoroのフェーズ・Home のテーマ切り替えをまたいで積算（完全停止でリセット）、
+  `smoothEnvironment` で毎ティックなだらかに近づけてから `engine.tick()` に渡す
+- 新規音源: なし（既存の `audio/relax/texture_rain.wav` を全テーマで再利用）
+
+### 却下した代替案
+- **天気ごとに専用の音源セットを新規収録・生成する**: 「音は作る前に条件に合うものを探し、
+  なるべく既存のセットを用いる」という明示的な要求に反する。天気は「彩り」であり
+  「別のテーマ」ではないと判断した
+- **雪の日に専用の雪音源を探す/作る**: 雪はそもそも音を立てない（降雪音の録音は非現実的）。
+  「積雪が周囲の音を吸収して静かになる」という物理現象を `lowPassFactor` で表現する方が
+  理にかなっており、新規音源も不要になった
+- **サーバーサイドで天気を取得してSSRに埋め込む**: `docs/CLAUDE.md` の方針
+  （SSR/API Routesを使わない、完全クライアントサイド）に反するため見送った。
+  クライアント側の Geolocation + fetch で完結させた
+- **位置情報の許可が得られない場合にIPアドレスから大まかな位置を推定する**: 追加の外部サービスへの
+  依存とプライバシー上の懸念が増えるため見送った。取得できなければ潔く「時間帯のみ」に
+  フォールバックする設計にした
+
+---
+
 ## 併用する Web API
 
 | API | 用途 | Phase |

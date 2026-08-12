@@ -1,12 +1,19 @@
 import { valueAt } from "./automation";
 import { BufferLoader } from "./buffer-loader";
 import { CellScheduler } from "./cell-scheduler";
+import { ENVIRONMENT_GAIN_FIELD, NEUTRAL_ENVIRONMENT, type EnvironmentModifier } from "./environment";
 import { mulberry32 } from "./prng";
 import { scaleSemitones } from "./scales";
 import type { LayerSpec, PhaseAutomation, ThemeSoundDefinition } from "./types";
 
 const LOOP_CROSSFADE_TAIL_SEC = 0; // Phase 2 で LoopManager のテイクローテーションと合わせて拡張する
 const DETUNE_RANGE = 0.006; // ±0.3%
+/**
+ * 天気オーバーレイ（雨）に使う既存アセット（docs/03_ARCHITECTURE.md ADR-010）。
+ * 「音は作る前に条件に合うものを探し、なるべく既存のセットを用いる」方針のため、
+ * 新規収録はせず Relax の実音源（Wikimedia Commons、Public Domain）をテーマ横断で再利用する。
+ */
+const ENVIRONMENT_RAIN_URL = "/audio/relax/texture_rain.wav";
 /**
  * Pad レイヤーの和声ドリフト用LFO周期（秒）。docs/03_ARCHITECTURE.md ADR-006。
  * Brian Eno "Music for Airports" のテープループ・フェイジング技法（長さの異なるループを
@@ -53,6 +60,9 @@ export class PhaseGraph {
   private readonly convolver: ConvolverNode;
   private readonly cellBuffers: readonly AudioBuffer[];
   private readonly rng: () => number;
+  private envRainGain: GainNode | null = null;
+  /** 直近の tick() で渡された EnvironmentModifier。currentCellDensity() から参照する。 */
+  private currentEnvironment: EnvironmentModifier = NEUTRAL_ENVIRONMENT;
   private disposed = false;
 
   private constructor(params: {
@@ -103,9 +113,12 @@ export class PhaseGraph {
   }): Promise<PhaseGraph> {
     const rngForTakes = mulberry32(params.seed);
     const cellSpec = params.themeDef.layers.find((l) => l.role === "cell");
-    const [irBuffer, cellBuffers] = await Promise.all([
+    const [irBuffer, cellBuffers, envRainBuffer] = await Promise.all([
       params.bufferLoader.load(params.themeDef.ir),
       cellSpec?.oneShots ? params.bufferLoader.loadAll(cellSpec.oneShots) : Promise.resolve([]),
+      // BufferLoader は URL 単位でデコード結果をキャッシュするため、テーマ切り替えのたびに
+      // 再フェッチ・再デコードされるわけではない（buffer-loader.ts 参照）。
+      params.bufferLoader.load(ENVIRONMENT_RAIN_URL),
     ]);
 
     const graph = new PhaseGraph({
@@ -118,6 +131,7 @@ export class PhaseGraph {
     });
     graph.convolver.buffer = irBuffer;
     graph.phaseMasterGain.connect(params.output);
+    graph.addEnvironmentRainLayer(envRainBuffer, params.startAt);
 
     for (const layer of params.themeDef.layers) {
       if (layer.role === "cell" || layer.role === "cue") continue; // ワンショット系はループ層と別扱い
@@ -221,31 +235,56 @@ export class PhaseGraph {
     });
   }
 
-  /** useTimer から約10Hzで呼ばれる。t は 0.0–1.0。 */
-  tick(t: number, now: number): void {
+  /**
+   * 天気オーバーレイ層（雨）。テーマ固有の pad/texture/pulse とは別の常設レイヤーとして
+   * mixBus に直結し、既存のフィルタ/リバーブ send を共有する（テーマごとの音色に自然に
+   * なじませるため。docs/03_ARCHITECTURE.md ADR-010）。既定ゲインは0で、
+   * `tick()` に渡す `EnvironmentModifier.rainOverlayGain` でのみ持ち上がる。
+   */
+  private addEnvironmentRainLayer(buffer: AudioBuffer, startAt: number): void {
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0;
+    gain.connect(this.mixBus);
+
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.loopStart = 0;
+    source.loopEnd = buffer.duration;
+    source.connect(gain);
+    source.start(startAt);
+
+    this.sources.push(source);
+    this.envRainGain = gain;
+  }
+
+  /** useTimer から約10Hzで呼ばれる。t は 0.0–1.0。environment は天気/時間帯/経過時間による補正（ADR-010、省略時は無補正）。 */
+  tick(t: number, now: number, environment: EnvironmentModifier = NEUTRAL_ENVIRONMENT): void {
     if (this.disposed) return;
+    this.currentEnvironment = environment;
     const RAMP_SEC = 0.15; // 短いランプでジッパーノイズを防ぐ（10Hz呼び出しに対して十分短い）
     const target = now + RAMP_SEC;
 
     for (const role of ["pad", "texture", "pulse"] as const) {
       const gainNode = this.layerGains.get(role);
       if (!gainNode) continue;
-      const value = valueAt(this.automation[role], t);
+      const value = valueAt(this.automation[role], t) * environment[ENVIRONMENT_GAIN_FIELD[role]];
       gainNode.gain.linearRampToValueAtTime(Math.max(0, value), target);
     }
 
     this.filterNode.frequency.linearRampToValueAtTime(
-      Math.max(20, valueAt(this.automation.lowPassHz, t)),
+      Math.max(20, valueAt(this.automation.lowPassHz, t) * environment.lowPassFactor),
       target,
     );
     this.sendGain.gain.linearRampToValueAtTime(
-      Math.max(0, valueAt(this.automation.reverbWet, t)),
+      Math.max(0, valueAt(this.automation.reverbWet, t) + environment.reverbWetDelta),
       target,
     );
+    this.envRainGain?.gain.linearRampToValueAtTime(Math.max(0, environment.rainOverlayGain), target);
   }
 
   currentCellDensity(t: number): number {
-    return valueAt(this.automation.cellDensity, t);
+    return valueAt(this.automation.cellDensity, t) * this.currentEnvironment.cellDensityFactor;
   }
 
   /** CellScheduler が決めた時刻に、スケール内の音程でワンショットを1つ鳴らす。 */
@@ -303,6 +342,8 @@ export class PhaseGraph {
     this.lfoOscillators.length = 0;
     for (const node of this.auxNodes) node.disconnect();
     this.auxNodes.length = 0;
+    this.envRainGain?.disconnect();
+    this.envRainGain = null;
     this.layerGains.forEach((g) => g.disconnect());
     this.layerGains.clear();
     this.mixBus.disconnect();
