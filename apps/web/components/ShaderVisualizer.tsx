@@ -16,8 +16,12 @@ const AMP_SMOOTHING = 0.12;
 
 export function ShaderVisualizer({ active, styleId, holeRadiusRatio = 0 }: ShaderVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // レンダー中の ref 書き換えは React のルール違反になるため、専用の effect で同期する
+  // （GeometricVisualizer.tsx と同じ理由）。
   const activeRef = useRef(active);
-  activeRef.current = active;
+  useEffect(() => {
+    activeRef.current = active;
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;

@@ -40,9 +40,12 @@ export function GeometricVisualizer({
 }: GeometricVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // active は一時停止/再開のたびに変わるが、そのたびにパーティクル配置などを作り直したくないので
-  // ref 経由で読む（このprop変化ではエフェクトを再実行しない）。
+  // ref 経由で読む（このprop変化ではエフェクトを再実行しない）。レンダー中の ref 書き換えは
+  // React のルール違反になるため、専用の effect で同期する。
   const activeRef = useRef(active);
-  activeRef.current = active;
+  useEffect(() => {
+    activeRef.current = active;
+  });
 
   useEffect(() => {
     const canvas = canvasRef.current;
