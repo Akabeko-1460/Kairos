@@ -2,23 +2,28 @@
 
 import { SoundIcon } from "@/components/SoundIcon";
 import { FOCUS_SOUND_THEMES } from "@/lib/soundThemes";
+import type { SoundTheme } from "@/lib/soundThemes";
 import type { ThemeId } from "@kairos/audio-engine";
 import { motion } from "framer-motion";
 
 interface FocusThemeSelectorProps {
   selectedId: ThemeId;
   onSelect: (id: ThemeId) => void;
+  /** 省略時は Pomodoro の Focus 系テーマ（Study/Work/Move）のみ。Timer/Stopwatch は全5テーマを渡す。 */
+  themes?: readonly SoundTheme[];
 }
 
 /**
- * Pomodoro の Focus フェーズで鳴らす/描くサウンドテーマ（Study・Work・Move）を選ぶUI。
+ * サウンドテーマを選ぶUI。既定は Pomodoro の Focus フェーズで鳴らす/描くテーマ
+ * （Study・Work・Move）のみだが、`themes` を渡せば任意のテーマ集合を選ばせられる
+ * （/timer, /stopwatch は用途を限定しないため全5テーマを渡す）。
  * 選択結果は背景アート（lib/soundThemes.ts の visual/accent）にのみ反映し、
  * タイマーリングやボタンの配色（focus-accent/break-accent）は変えない。
  */
-export function FocusThemeSelector({ selectedId, onSelect }: FocusThemeSelectorProps) {
+export function FocusThemeSelector({ selectedId, onSelect, themes = FOCUS_SOUND_THEMES }: FocusThemeSelectorProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {FOCUS_SOUND_THEMES.map((theme) => {
+      {themes.map((theme) => {
         const active = theme.id === selectedId;
         return (
           <motion.button

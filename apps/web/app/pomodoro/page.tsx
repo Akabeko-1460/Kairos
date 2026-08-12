@@ -10,6 +10,7 @@ import { useSoundscape } from "@/hooks/useSoundscape";
 import { useTaskListStore, type TaskItem } from "@/hooks/useTaskList";
 import { useTimerStore } from "@/hooks/useTimer";
 import { useBackgroundArtStore } from "@/lib/backgroundArtStore";
+import { formatMmSs } from "@/lib/formatTime";
 import { FOCUS_SOUND_THEMES } from "@/lib/soundThemes";
 import { isRunning, progress, remainingMs, type PomodoroPreset } from "@kairos/core";
 import { AnimatePresence, motion } from "framer-motion";
@@ -95,13 +96,6 @@ function TaskRow({ item, onToggle, onRemove }: TaskRowProps) {
   );
 }
 
-function formatMmSs(ms: number): string {
-  const totalSeconds = Math.ceil(ms / 1000);
-  const m = Math.floor(totalSeconds / 60);
-  const s = totalSeconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-
 function phaseLabel(phase: string): string {
   switch (phase) {
     case "focus":
@@ -133,7 +127,7 @@ export default function PomodoroPage() {
   const removeTaskItem = useTaskListStore((s) => s.removeItem);
   const toggleTaskItem = useTaskListStore((s) => s.toggleItem);
   const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
-  const now = useNow();
+  const now = useNow(isRunning(state));
   const [starting, setStarting] = useState(false);
 
   const isIdle = state.phase === "idle" || state.phase === "completed";

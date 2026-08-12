@@ -203,6 +203,17 @@
       未着手: フェーズ切替時の背景色4秒補間（`docs/02_SPEC.md` §6.3）、
       Pad の実音源化（A/D/E キーに合う安定したドローン録音の追加探索）、
       天気・時間帯のUI表示（現状は音にのみ反映、画面上に状態を出していない）
+      **rev.6**: Pomodoro に加えて「普通のタイマー」（/timer）と「ストップウォッチ」
+      （/stopwatch）を選べるようにした。TopNav の "Pomodoro" タブは3つをまとめる
+      "Timers" ボタンに改称し、押すと画面をぼかした上に Pomodoro/Timer/Stopwatch を選ぶ
+      オーバーレイメニュー（`TimerToolsMenu` — 白文字・白い罫線、ボタン間の隙間では
+      左右の縦棒だけが繋がって見える「梯子」状デザイン）が重なるようにした
+      （`apps/web/components/TimerToolsMenu.tsx`）。Timer/Stopwatch は `packages/core` に
+      Pomodoro のラウンド/休憩を持たない単純な状態機械（`countdown-state.ts`/
+      `stopwatch-state.ts`、絶対時刻ベース・Clock注入という既存の設計を踏襲）を新設し、
+      音の再生自体は Home のフリー再生（`playFreeplay`/`stopFreeplay`）をそのまま再利用した
+      （タイマーの数字表示と、鳴らす音を分離する設計）。`useNow` はタイマー種別に依存しない
+      よう `running: boolean` を引数に取る形へ汎化した。
 - [ ] Phase 2: 生成エンジン本体（LoopManager のテイクローテーション、AI生成の本番素材への差し替え、実聴での音作り）
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
