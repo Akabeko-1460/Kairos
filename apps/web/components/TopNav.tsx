@@ -34,13 +34,15 @@ export function TopNav() {
               className="relative px-1 py-1"
               onClick={tab.href === "/" ? handleHomeClick : undefined}
             >
-              {/* もわっと白く光るホバーグロー。ぼかした白い光暈をテキストの後ろに重ねて背景ごと明るくする。 */}
+              {/* もわっと白く光るホバーグロー。ぼかした白い光暈をテキストの後ろに重ねて背景ごと明るくする。
+                  文字の外側まで大きく・強く広がるように、広がり幅(inset)・ぼかし(blur)・
+                  最大不透明度をいずれも底上げしている。 */}
               <motion.span
                 aria-hidden
-                className="pointer-events-none absolute inset-[-16px] rounded-full bg-white"
-                style={{ filter: "blur(16px)" }}
-                initial={{ opacity: 0, scale: 0.85 }}
-                whileHover={{ opacity: 0.4, scale: 1.1 }}
+                className="pointer-events-none absolute inset-[-28px] rounded-full bg-white"
+                style={{ filter: "blur(22px)" }}
+                initial={{ opacity: 0, scale: 0.8 }}
+                whileHover={{ opacity: 0.65, scale: 1.25 }}
                 transition={{ duration: 0.35, ease: "easeOut" }}
               />
               {/*

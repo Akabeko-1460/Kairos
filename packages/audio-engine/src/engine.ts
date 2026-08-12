@@ -157,7 +157,7 @@ export class SoundscapeEngine {
     this.masterGain.gain.setValueCurveAtTime(equalPowerCurve(true), now, fadeInSec);
   }
 
-  async stop(fadeOutSec = 1.0): Promise<void> {
+  async stop(fadeOutSec = 0.4): Promise<void> {
     if (!this.ctx || !this.masterGain) return;
     const now = this.ctx.currentTime;
     this.masterGain.gain.cancelScheduledValues(now);
