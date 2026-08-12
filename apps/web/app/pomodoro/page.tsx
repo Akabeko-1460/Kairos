@@ -42,17 +42,20 @@ function TaskRow({ item, onToggle, onRemove }: TaskRowProps) {
       className="group flex items-center gap-2 text-sm"
     >
       {/*
-        チェックボックスとタスク文をまとめて relative コンテナに入れ、完了時の
-        取り消し線をチェックボックスも含めて一直線に引けるようにする
-        （文字だけの text-decoration:line-through だとチェックボックスは貫通しない）。
+        タスク文は Shift+Enter で入力した改行を保持しつつ、長い文字列は行の幅で折り返す
+        （whitespace-pre-wrap + min-w-0。以前の truncate は改行を空白に潰し、長い文字列を
+        省略記号で切り詰めていた）。折り返して複数行になりうるため、完了時の取り消し線は
+        以前の「チェックボックスごと一直線」演出（絶対配置の1本線、単一行前提）をやめ、
+        各行に個別にかかる text-decoration の line-through に切り替えた
+        （複数行を1本の絶対配置の線で貫くことはできないため）。
       */}
-      <span className="relative flex flex-1 items-center gap-2 overflow-hidden">
+      <span className="relative flex flex-1 items-start gap-2">
         <button
           type="button"
           onClick={onToggle}
           aria-pressed={item.done}
           aria-label={item.done ? `${item.text} を未完了に戻す` : `${item.text} を完了にする`}
-          className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-white/70"
+          className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border border-white/70"
         >
           {item.done && (
             <svg
@@ -69,15 +72,13 @@ function TaskRow({ item, onToggle, onRemove }: TaskRowProps) {
             </svg>
           )}
         </button>
-        <span className={`truncate ${item.done ? "text-muted/50" : "text-foreground"}`}>{item.text}</span>
-        <motion.span
-          aria-hidden
-          className="pointer-events-none absolute left-0 top-1/2 h-px bg-muted/60"
-          style={{ transformOrigin: "left" }}
-          initial={false}
-          animate={{ width: item.done ? "100%" : "0%" }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
-        />
+        <span
+          className={`min-w-0 flex-1 whitespace-pre-wrap break-words ${
+            item.done ? "text-muted/50 line-through" : "text-foreground"
+          }`}
+        >
+          {item.text}
+        </span>
       </span>
       {/*
         ×が押しにくいので少し大きくする。文字サイズを上げつつ、

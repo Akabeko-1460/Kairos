@@ -347,6 +347,19 @@
       （通常のEnterのみ追加・確定）、プレースホルダーも操作説明入りの文言に変更した上で、
       スマホ幅（`apps/web/hooks/useMediaQuery.ts`を新設、`useSyncExternalStore`で
       SSR安全に実装）では操作説明部分を省いた短い文言に出し分けるようにした。
+      **rev.6.10**: rev.6.9のタスク追加欄の2つの副作用を修正。(1) Shift+Enterで入れた改行が
+      表示時に半角スペースに潰れていたのは、`TaskRow`（`apps/web/app/pomodoro/page.tsx`）が
+      `truncate`（`white-space: nowrap`）でタスク文を表示していたため。(2) 長い文字列が
+      折り返されず省略記号で切れていたのも同じ`truncate`が原因。`whitespace-pre-wrap
+      break-words`（+ flexの子要素が縮まないデフォルトを解除する`min-w-0`）に差し替えて
+      両方を解決した。折り返して複数行になりうる以上、旧来の「チェックボックスごと一直線に
+      引く」絶対配置の取り消し線演出（単一行前提）は複数行を正しく貫けないため撤去し、
+      各行に自然にかかるネイティブの`line-through`に置き換えた（チェック時のチェックマーク
+      アイコン自体は従来通り）。チェックボックスの縦位置も`items-center`から`items-start`
+      （+`mt-0.5`）にし、複数行に伸びた文章の1行目と揃うようにした。chrome-devtools MCPで
+      改行入りタスク・長文タスクの両方を実際に追加し、`textContent`に`\n`が保持されていること
+      と`white-space: pre-wrap`/`text-decoration-line: line-through`が適用されていることを
+      確認済み。
 - [ ] Phase 3: 実運用に耐える体験
 - [ ] Phase 4: 拡張
 
