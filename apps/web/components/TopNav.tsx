@@ -2,10 +2,11 @@
 
 import { TimerToolsMenu, type TimerTool } from "@/components/TimerToolsMenu";
 import { useFreeplay } from "@/hooks/useFreeplay";
+import { navigateInstantly, navigateWithViewTransition } from "@/lib/viewTransition";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 const TABS = [{ href: "/", label: "Home" }] as const;
 const TRAILING_TABS = [{ href: "/credit", label: "Credit" }] as const;
@@ -52,7 +53,17 @@ function NavItemContent({ label, active }: { label: string; active: boolean }) {
   );
 }
 
-function NavLink({ href, label, active, onClick }: { href: string; label: string; active: boolean; onClick?: () => void }): ReactNode {
+function NavLink({
+  href,
+  label,
+  active,
+  onClick,
+}: {
+  href: string;
+  label: string;
+  active: boolean;
+  onClick?: (e: MouseEvent<HTMLAnchorElement>) => void;
+}): ReactNode {
   return (
     <Link href={href} className="relative px-1 py-1" onClick={onClick}>
       <NavItemContent label={label} active={active} />
@@ -72,11 +83,27 @@ export function TopNav() {
   const timerToolsActive = TIMER_TOOLS.some((t) => pathname.startsWith(t.href));
   const activeTimerToolHref = TIMER_TOOLS.find((t) => pathname.startsWith(t.href))?.href ?? null;
 
+  // TimerToolsMenu の項目は <Link> ではなく素の <button>（メニューの見た目上、位置合わせや
+  // 開閉アニメーションの都合でLinkにしていない）のため、Next.js の自動プリフェッチが効かず、
+  // クリックのたびに初回ナビゲーションの読み込みが発生していた。これが View Transition の
+  // 「クリックしてから実際に新画面のスナップショットが撮れるまでの無音区間」を長引かせ、
+  // アニメーションというより「ロードが挟まった」ように感じられる主因だったため、
+  // マウント時に先読みしておく。
+  useEffect(() => {
+    for (const tool of TIMER_TOOLS) router.prefetch(tool.href);
+  }, [router]);
+
   // Home タブは「最初の Kairos 表示に戻る」ボタンとしても機能させる。
   // Pomodoro/Timer/Stopwatch のタイマー再生中（mode === "timer"）まで止めてしまうと
   // 音が切れてしまうため、Home画面の自由再生（freeplay）が鳴っているときだけリセットする。
-  const handleHomeClick = () => {
+  const handleHomeClick = (e: MouseEvent<HTMLAnchorElement>) => {
     if (mode === "freeplay") stopFreeplay();
+    // Timers メニュー（handleSelectTool）と同じくブラウザ標準の View Transitions API で
+    // クロスフェードさせる（lib/viewTransition.ts）。修飾キー付きクリック・中クリックは
+    // ブラウザ標準の「新しいタブで開く」等の挙動を優先し、横取りしない。
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    navigateWithViewTransition(() => router.push("/"));
   };
 
   const handleOpenToolsMenu = () => {
@@ -92,7 +119,15 @@ export function TopNav() {
     // AudioContext はユーザー操作起点でしか作れない（ADR-003）ため、その操作をこのクリックに
     // 前倒しして用意しておく（同期的な呼び出しなのでジェスチャー扱いのまま渡る）。
     ensureEngine().catch((err: unknown) => console.error("[Kairos] SoundscapeEngine error:", err));
-    router.push(href);
+    // 既に Pomodoro/Timer/Stopwatch のいずれかにいる状態からの切り替えは、prefetch済みで
+    // 追加のロードを伴わない軽い遷移なので、View Transition の「奥へ退く/奥から浮き上がる」
+    // 演出を使わず即座に切り替える。Home 等から Timers 系へ最初に入るときだけ、
+    // これまで通りアニメーションさせる（timerToolsActive で判定）。
+    if (timerToolsActive) {
+      navigateInstantly(() => router.push(href));
+    } else {
+      navigateWithViewTransition(() => router.push(href));
+    }
   };
 
   return (
