@@ -1,7 +1,9 @@
 "use client";
 
 import { TimerToolsMenu, type TimerTool } from "@/components/TimerToolsMenu";
+import { useCountdownStore } from "@/hooks/useCountdown";
 import { useFreeplay } from "@/hooks/useFreeplay";
+import { useStopwatchStore } from "@/hooks/useStopwatch";
 import { navigateInstantly, navigateWithViewTransition } from "@/lib/viewTransition";
 import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
@@ -77,6 +79,16 @@ export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { mode, stopFreeplay, ensureEngine } = useFreeplay();
+  // Timer/Stopwatch は Pomodoro と違って mode を "timer" に切り替えず、Home と同じ
+  // freeplay 再生をそのまま使い続ける。そのため mode だけを見て停止すると、計測中の
+  // Timer/Stopwatch の音まで消してしまう（下記 handleHomeClick 参照）。
+  const countdownStatus = useCountdownStore((s) => s.state.status);
+  const stopwatchStatus = useStopwatchStore((s) => s.state.status);
+  const timerToolInUse =
+    countdownStatus === "running" ||
+    countdownStatus === "paused" ||
+    stopwatchStatus === "running" ||
+    stopwatchStatus === "paused";
   const timersButtonRef = useRef<HTMLButtonElement>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ top: number; left: number } | null>(null);
 
@@ -94,10 +106,16 @@ export function TopNav() {
   }, [router]);
 
   // Home タブは「最初の Kairos 表示に戻る」ボタンとしても機能させる。
-  // Pomodoro/Timer/Stopwatch のタイマー再生中（mode === "timer"）まで止めてしまうと
-  // 音が切れてしまうため、Home画面の自由再生（freeplay）が鳴っているときだけリセットする。
+  // ただし計測中のタイマーの音まで止めてはいけない。
+  //
+  // Pomodoro は Start すると mode が "timer" になるので mode を見るだけで避けられるが、
+  // Timer/Stopwatch は計測中も mode が "freeplay" のままなので、mode だけを条件にすると
+  // 計測中の音を止めてしまう。しかも Timer/Stopwatch 側には復帰経路が無い
+  // （プレビュー再生の effect は idle のときだけ動き、"Resume Audio" ボタンは
+  // エンジン未初期化のときだけ出る）ため、一度止まると Reset するまで無音のままになる。
+  // そこで実際にタイマーが動いている（一時停止中も含む）間は停止しない。
   const handleHomeClick = (e: MouseEvent<HTMLAnchorElement>) => {
-    if (mode === "freeplay") stopFreeplay();
+    if (mode === "freeplay" && !timerToolInUse) stopFreeplay();
     // Timers メニュー（handleSelectTool）と同じくブラウザ標準の View Transitions API で
     // クロスフェードさせる（lib/viewTransition.ts）。修飾キー付きクリック・中クリックは
     // ブラウザ標準の「新しいタブで開く」等の挙動を優先し、横取りしない。
