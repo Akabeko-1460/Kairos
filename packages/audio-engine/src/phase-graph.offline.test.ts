@@ -139,6 +139,11 @@ describe("PhaseGraph environment modulation (ADR-010)", () => {
 
     graph.scheduleMasterFade(new Float32Array([1, 1]), 0, 0.01);
     graph.tick(0.5, 0, { ...NEUTRAL_ENVIRONMENT, rainOverlayGain });
+    // rainOverlayGain > 0 のときだけ tick() が雨バッファの遅延ロードを起動する
+    // （A-4: 天候に関係なく毎テーマ無条件でロードしないための変更）。ロードは
+    // BufferLoader.load() の解決を待つ非同期処理なので、実際にノードが生えるまで
+    // マクロタスク境界を1つ挟んで待ってからレンダリングする。
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const rendered = await ctx.startRendering();
     graph.dispose();

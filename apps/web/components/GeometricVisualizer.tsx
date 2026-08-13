@@ -130,13 +130,30 @@ export function GeometricVisualizer({
         state,
       );
 
+      scheduleNextFrame();
+    }
+
+    // タブが背面に回っている間は描画ループ自体を止める（ShaderVisualizer.tsx と同じ理由）。
+    // ページ遷移のクロスフェード中は新旧2世代 × Shader/Geometric の最大4本の描画ループが
+    // 同時稼働しうるため、非表示時に確実に止めておく効果が大きい。
+    function scheduleNextFrame() {
+      if (disposed || document.hidden) return;
       rafId = requestAnimationFrame(draw);
     }
 
-    rafId = requestAnimationFrame(draw);
+    function handleVisibilityChange() {
+      if (!document.hidden && !disposed) {
+        cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(draw);
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    scheduleNextFrame();
     return () => {
       disposed = true;
       cancelAnimationFrame(rafId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("resize", resize);
     };
   }, [accentColor, styleId, holeRadiusRatio, seed]);

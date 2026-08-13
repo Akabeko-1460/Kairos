@@ -105,3 +105,40 @@ body {
   opacity: 1;
   transform: scale(1.15);
 }
+
+/* 画面遷移のクロスフェード（View Transitions API、lib/viewTransition.ts）。
+   ブラウザの既定は単純なopacityクロスフェードだが、「今の画面が奥にスッと退きながら、
+   次の画面が奥からヌルッと浮き上がってくる」という要望に合わせ、PageTransition.tsx の
+   従来の入場演出（y/scale/blur）と対称的な退場演出を、旧画面側に追加する。
+   prefers-reduced-motion のときは navigateWithViewTransition 側でそもそも
+   startViewTransition を呼ばないため、ここでの指定は通常発火時のみ効く。 */
+@keyframes kairos-page-recede {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.985);
+    filter: blur(4px);
+  }
+}
+@keyframes kairos-page-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.975);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+::view-transition-old(root) {
+  animation: 0.32s cubic-bezier(0.16, 1, 0.3, 1) both kairos-page-recede;
+}
+::view-transition-new(root) {
+  animation: 0.32s cubic-bezier(0.16, 1, 0.3, 1) both kairos-page-rise;
+}

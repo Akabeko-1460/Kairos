@@ -94,7 +94,9 @@ export function ShaderVisualizer({ active, styleId, holeRadiusRatio = 0 }: Shade
 
     function draw(timeMs: number) {
       if (disposed || !canvas || !gl) return;
-      resize();
+      // resize() は初回とwindowのresizeイベント時だけでよい（GeometricVisualizer.tsx と
+      // 同じ方式）。以前は毎フレーム呼んでおり、getBoundingClientRect() を60fpsで
+      // 呼び続ける無駄なレイアウト計算になっていた。
       gl.viewport(0, 0, canvas.width, canvas.height);
 
       const palette = SHADER_PALETTES[styleId];
@@ -132,13 +134,31 @@ export function ShaderVisualizer({ active, styleId, holeRadiusRatio = 0 }: Shade
 
       gl.drawArrays(gl.TRIANGLES, 0, 3);
 
+      scheduleNextFrame();
+    }
+
+    // タブが背面に回っている間は描画ループ自体を止める。音声側は Web Worker で意図的に
+    // バックグラウンド耐性を持たせている一方、この描画ループには止める仕組みが無く、
+    // 見えていないのに WebGL 描画を続ける（GPU/バッテリー消費）無駄があった。
+    function scheduleNextFrame() {
+      if (disposed || document.hidden) return;
       rafId = requestAnimationFrame(draw);
     }
 
-    rafId = requestAnimationFrame(draw);
+    function handleVisibilityChange() {
+      if (!document.hidden && !disposed) {
+        // 非表示化で止まっていたループを再開する（止めていなければ二重に走らせない）。
+        cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(draw);
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    scheduleNextFrame();
     return () => {
       disposed = true;
       cancelAnimationFrame(rafId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("resize", resize);
       gl.deleteProgram(program);
       gl.deleteBuffer(positionBuffer);
