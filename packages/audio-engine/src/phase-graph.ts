@@ -48,8 +48,15 @@ export class PhaseGraph {
   readonly mixBus: GainNode;
   readonly cellScheduler: CellScheduler;
   readonly automation: PhaseAutomation;
+  /**
+   * このグラフが実際に fetch/decode した音源URLの集合。BufferLoader は URL 単位でしか
+   * キャッシュを追跡しないため、「クロスフェード後に不要になったバッファだけを解放する」
+   * 判定は呼び出し側（SoundscapeEngine）がこの集合を突き合わせて行う。
+   */
+  readonly loadedUrls = new Set<string>();
 
   private readonly ctx: BaseAudioContext;
+  private readonly bufferLoader: BufferLoader;
   private readonly layerGains = new Map<string, GainNode>();
   private readonly sources: AudioBufferSourceNode[] = [];
   private readonly lfoOscillators: OscillatorNode[] = [];
@@ -61,12 +68,15 @@ export class PhaseGraph {
   private readonly cellBuffers: readonly AudioBuffer[];
   private readonly rng: () => number;
   private envRainGain: GainNode | null = null;
+  /** 雨オーバーレイの遅延ロードが既に進行中かどうか（tick() からの多重発火を防ぐ）。 */
+  private envRainLoading = false;
   /** 直近の tick() で渡された EnvironmentModifier。currentCellDensity() から参照する。 */
   private currentEnvironment: EnvironmentModifier = NEUTRAL_ENVIRONMENT;
   private disposed = false;
 
   private constructor(params: {
     ctx: BaseAudioContext;
+    bufferLoader: BufferLoader;
     automation: PhaseAutomation;
     cellBuffers: readonly AudioBuffer[];
     scaleName: string;
@@ -74,6 +84,7 @@ export class PhaseGraph {
     startAt: number;
   }) {
     this.ctx = params.ctx;
+    this.bufferLoader = params.bufferLoader;
     this.automation = params.automation;
     this.cellBuffers = params.cellBuffers;
     this.rng = mulberry32(params.seed);
@@ -113,16 +124,17 @@ export class PhaseGraph {
   }): Promise<PhaseGraph> {
     const rngForTakes = mulberry32(params.seed);
     const cellSpec = params.themeDef.layers.find((l) => l.role === "cell");
-    const [irBuffer, cellBuffers, envRainBuffer] = await Promise.all([
+    const [irBuffer, cellBuffers] = await Promise.all([
       params.bufferLoader.load(params.themeDef.ir),
       cellSpec?.oneShots ? params.bufferLoader.loadAll(cellSpec.oneShots) : Promise.resolve([]),
-      // BufferLoader は URL 単位でデコード結果をキャッシュするため、テーマ切り替えのたびに
-      // 再フェッチ・再デコードされるわけではない（buffer-loader.ts 参照）。
-      params.bufferLoader.load(ENVIRONMENT_RAIN_URL),
     ]);
+    // 雨オーバーレイ（ENVIRONMENT_RAIN_URL）はここでは事前ロードしない。天候が実際に
+    // 「雨」になった時だけ tick() 側で遅延ロードする（loadEnvironmentRainLayer 参照）。
+    // 天候に関係なく毎テーマ無条件でデコード・常駐させるのはメモリの無駄だったため。
 
     const graph = new PhaseGraph({
       ctx: params.ctx,
+      bufferLoader: params.bufferLoader,
       automation: params.themeDef.automation,
       cellBuffers,
       scaleName: params.themeDef.scale,
@@ -131,7 +143,10 @@ export class PhaseGraph {
     });
     graph.convolver.buffer = irBuffer;
     graph.phaseMasterGain.connect(params.output);
-    graph.addEnvironmentRainLayer(envRainBuffer, params.startAt);
+    graph.loadedUrls.add(params.themeDef.ir);
+    if (cellSpec?.oneShots) {
+      for (const url of cellSpec.oneShots) graph.loadedUrls.add(url);
+    }
 
     for (const layer of params.themeDef.layers) {
       if (layer.role === "cell" || layer.role === "cue") continue; // ワンショット系はループ層と別扱い
@@ -141,12 +156,14 @@ export class PhaseGraph {
       // 混ざり具合をゆっくりドリフトさせる（ADR-006: ゆったりとした和声/音色の変化）。
       if (layer.role === "pad" && layer.takes.length > 1) {
         const buffers = await params.bufferLoader.loadAll(layer.takes);
+        for (const url of layer.takes) graph.loadedUrls.add(url);
         graph.addPadEnsemble(layer, buffers, params.startAt, rngForTakes);
         continue;
       }
 
       const takeUrl = layer.takes[Math.floor(rngForTakes() * layer.takes.length)]!;
       const buffer = await params.bufferLoader.load(takeUrl);
+      graph.loadedUrls.add(takeUrl);
       graph.addLoopLayer(layer, buffer, params.startAt, rngForTakes);
     }
 
@@ -258,12 +275,48 @@ export class PhaseGraph {
     this.envRainGain = gain;
   }
 
+  /**
+   * 雨オーバーレイの遅延ロード。天候が実際に「雨」と判定されて `rainOverlayGain > 0` に
+   * なった最初の瞬間だけ fetch/decode する（`create()` 側の注記を参照）。ロード中に
+   * dispose() された場合は結果を捨てる。BufferLoader 自体がURL単位でキャッシュするため、
+   * 同一セッション内で複数回「雨」に切り替わっても再デコードは発生しない。
+   */
+  private loadEnvironmentRainLayer(startAt: number): void {
+    this.envRainLoading = true;
+    this.bufferLoader
+      .load(ENVIRONMENT_RAIN_URL)
+      .then((buffer) => {
+        this.envRainLoading = false;
+        if (this.disposed) return; // 待っている間にテーマが切り替わっていたら何もしない
+        this.loadedUrls.add(ENVIRONMENT_RAIN_URL);
+        this.addEnvironmentRainLayer(buffer, startAt);
+        // ノード生成が次の tick() より前に間に合わないと、生成直後のゲインが 0 のまま
+        // 次の tick を待ってしまい、その分だけ雨の立ち上がりが遅れる。生成した直後に
+        // 直近の目標値（this.currentEnvironment、tick() 冒頭で毎回更新している）を
+        // 即座に反映し、体感の遅延をなくす。
+        if (this.envRainGain) {
+          this.envRainGain.gain.value = Math.max(0, this.currentEnvironment.rainOverlayGain);
+        }
+      })
+      .catch(() => {
+        this.envRainLoading = false;
+      });
+  }
+
   /** useTimer から約10Hzで呼ばれる。t は 0.0–1.0。environment は天気/時間帯/経過時間による補正（ADR-010、省略時は無補正）。 */
   tick(t: number, now: number, environment: EnvironmentModifier = NEUTRAL_ENVIRONMENT): void {
     if (this.disposed) return;
     this.currentEnvironment = environment;
     const RAMP_SEC = 0.15; // 短いランプでジッパーノイズを防ぐ（10Hz呼び出しに対して十分短い）
     const target = now + RAMP_SEC;
+
+    // 雨が必要になった最初の tick でだけ非同期ロードを起動する。ロードが終わるまでの
+    // 一瞬（数百ms程度）は envRainGain がまだ無いため下の linearRampToValueAtTime は
+    // no-op になるが、ノード生成直後の初期ゲインは0なので、次tickで自然にランプインする
+    // （唐突な音量ジャンプにはならない）。
+    if (environment.rainOverlayGain > 0 && !this.envRainGain && !this.envRainLoading) {
+      this.loadEnvironmentRainLayer(now);
+    }
 
     for (const role of ["pad", "texture", "pulse"] as const) {
       const gainNode = this.layerGains.get(role);
@@ -311,6 +364,12 @@ export class PhaseGraph {
 
     source.start(when);
     this.sources.push(source);
+    // ワンショットは再生完了後も this.sources に残り続けると、Sleep の長時間再生のように
+    // Cell が延々と発火し続けるケースで配列が際限なく肥大化する。終了時に自分で取り除く。
+    source.onended = () => {
+      const idx = this.sources.indexOf(source);
+      if (idx !== -1) this.sources.splice(idx, 1);
+    };
   }
 
   /** 等パワーカーブでフェードイン/アウトする。crossfader.ts から呼ばれる。 */
@@ -323,6 +382,9 @@ export class PhaseGraph {
     if (this.disposed) return;
     this.disposed = true;
     for (const source of this.sources) {
+      // dispose 中に onended の自己解放ハンドラが this.sources を触ると、
+      // 直後の `this.sources.length = 0` と競合しうるため先に外しておく。
+      source.onended = null;
       try {
         source.stop();
       } catch {

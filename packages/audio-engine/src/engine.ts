@@ -35,6 +35,13 @@ export class SoundscapeEngine {
   private currentTheme: ThemeId | null = null;
   private lastT = 0;
   private disposeOutgoingTimer: ReturnType<typeof setTimeout> | null = null;
+  /** getDebugInfo() が無駄な再描画を避けるために使う直近スナップショットのキャッシュ。 */
+  private lastDebugInfo: {
+    contextTime: number;
+    contextState: string;
+    nextCellEventTime: number | null;
+    currentTheme: ThemeId | null;
+  } | null = null;
 
   constructor(private readonly options: SoundscapeEngineOptions = {}) {}
 
@@ -171,6 +178,7 @@ export class SoundscapeEngine {
       if (this.outgoingGraph === outgoing) {
         outgoing.dispose();
         this.outgoingGraph = null;
+        this.releaseBuffersUnusedBy(outgoing, this.currentGraph);
       }
     }, (crossfadeSec + 0.5) * 1000);
   }
@@ -241,12 +249,34 @@ export class SoundscapeEngine {
     currentTheme: ThemeId | null;
   } | null {
     if (!this.ctx) return null;
-    return {
+    const contextState = "state" in this.ctx ? (this.ctx as AudioContext).state : "offline";
+    const nextCellEventTime = this.currentGraph?.cellScheduler.nextEventTime ?? null;
+
+    // apps/web 側は soundscapeRuntime.ts の10Hzループから毎tick呼び、Zustandの
+    // `debugInfo` にそのままセットしている。以前は常に新しいオブジェクトを返していたため、
+    // 参照比較で「毎回変化した」扱いになり、debugInfo を購読する全ページ・TopNavが
+    // 待機中も含めて常時10回/秒再描画されていた。contextTime は音声クロックそのものなので
+    // 毎tick変わって当然だが、UI側が実際に参照するのは contextState / currentTheme /
+    // nextCellEventTime のみ（contextTime を読む箇所は現状ない）。これらが前回と同じなら
+    // 同じオブジェクト参照を返し、無駄な再描画を止める。
+    const prev = this.lastDebugInfo;
+    if (
+      prev &&
+      prev.contextState === contextState &&
+      prev.currentTheme === this.currentTheme &&
+      prev.nextCellEventTime === nextCellEventTime
+    ) {
+      return prev;
+    }
+
+    const next = {
       contextTime: this.ctx.currentTime,
-      contextState: "state" in this.ctx ? (this.ctx as AudioContext).state : "offline",
-      nextCellEventTime: this.currentGraph?.cellScheduler.nextEventTime ?? null,
+      contextState,
+      nextCellEventTime,
       currentTheme: this.currentTheme,
     };
+    this.lastDebugInfo = next;
+    return next;
   }
 
   async dispose(): Promise<void> {
@@ -265,6 +295,7 @@ export class SoundscapeEngine {
     }
     this.ctx = null;
     this.bufferLoader?.clear();
+    this.lastDebugInfo = null;
   }
 
   // --- 内部ヘルパ ---
@@ -293,6 +324,21 @@ export class SoundscapeEngine {
       startAt: ctx.currentTime,
       output: this.masterGain!,
     });
+  }
+
+  /**
+   * クロスフェードで手放した `outgoing` が使っていた音源URLのうち、今なお必要な
+   * グラフ（通常はクロスフェード先の新テーマ）が使っていないものだけを BufferLoader
+   * から解放する。テーマ間で共有される音源（例: 同じ IR や、雨オーバーレイの遅延ロード
+   * URL がたまたま両方のテーマで使われている場合）はここで誤って解放しない。
+   */
+  private releaseBuffersUnusedBy(outgoing: PhaseGraph, stillActive: PhaseGraph | null): void {
+    if (!this.bufferLoader) return;
+    for (const url of outgoing.loadedUrls) {
+      if (!stillActive?.loadedUrls.has(url)) {
+        this.bufferLoader.release(url);
+      }
+    }
   }
 
   /** WorkerTicker から呼ばれる。常に SCHEDULE_AHEAD_SEC 先までの Cell 発火を予約しておく。 */
