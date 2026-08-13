@@ -49,6 +49,15 @@ const LONG_BREAK_THEME: ThemeId = "sleep";
 
 export type PlaybackMode = "idle" | "freeplay" | "timer";
 export type EngineDebugInfo = ReturnType<SoundscapeEngine["getDebugInfo"]>;
+export type CueKind = "phaseEnd" | "sessionEnd";
+
+/**
+ * 終了通知音の強さ。Pomodoro は区切りを「軽く」知らせるだけ（集中の流れを断ち切らない）、
+ * Timer は時間になったことを「しっかり」知らせる（席を外していても気づける）。
+ */
+const POMODORO_PHASE_END_CUE = { gain: 0.45 } as const;
+const POMODORO_SESSION_END_CUE = { gain: 0.6, times: 2, intervalSec: 1.1 } as const;
+export const TIMER_FINISH_CUE = { gain: 1, times: 3, intervalSec: 0.9 } as const;
 
 /**
  * タイマーの現在フェーズと、ユーザーが選んだ Focus テーマから、鳴らすべきテーマを1つに決める
@@ -89,6 +98,8 @@ interface SoundscapeRuntimeStore {
   regenerateFreeplay: () => void;
   stopFreeplay: () => void;
   setMasterVolume: (v: number) => void;
+  /** 終了通知音。テーマのフェードを経由しないので、音を止めるのと同時に呼んでも消えない。 */
+  playCue: (kind: CueKind, opts?: { gain?: number; times?: number; intervalSec?: number }) => void;
 }
 
 // このモジュールを跨いだ再インポートでも二重初期化しないよう、状態はモジュールスコープに持つ。
@@ -180,8 +191,17 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
       const mode = get().mode;
 
       if (mode === "timer") {
+        // 「時間切れによるフェーズ遷移」だけを検出して合図音を鳴らす。syncToNow() は経過時間が
+        // フェーズ長を超えたときにしか進めないので、その前後で phase を比べれば、
+        // ユーザー操作による Skip / Reset と自然な終了を取り違えずに済む。
+        const phaseBefore = useTimerStore.getState().state.phase;
         useTimerStore.getState().syncToNow();
         const state = useTimerStore.getState().state;
+        if (state.phase !== phaseBefore) {
+          const cue: CueKind = state.phase === "completed" ? "sessionEnd" : "phaseEnd";
+          const opts = state.phase === "completed" ? POMODORO_SESSION_END_CUE : POMODORO_PHASE_END_CUE;
+          void engine.playCue(cue, opts).catch(logEngineError);
+        }
         const now = systemClock.now();
 
         const paused = isPaused(state);
@@ -395,6 +415,11 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     setMasterVolume: (v) => {
       set({ masterVolume: v });
       engine?.setMasterVolume(v);
+    },
+
+    playCue: (kind, opts) => {
+      // エンジン未初期化なら鳴らしようがないので黙って諦める（通知が出ないだけで実害はない）。
+      void engine?.playCue(kind, opts).catch(logEngineError);
     },
   };
 });
