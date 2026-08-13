@@ -43,8 +43,20 @@ export function resetCountdown(s: CountdownState): CountdownState {
   return createIdleCountdown(s.durationMs);
 }
 
+/**
+ * 長さを変更する。
+ *
+ * 動いていない（idle / completed）ときは、**計測の履歴ごと捨てて新しい長さで組み直す**。
+ * `completed` は `startedAt` を持ったままなので、`durationMs` だけを差し替えると
+ * 「新しい長さ − 前回の経過時間」が残り時間として表示されてしまう
+ * （例: 10分で完了 → 60分を選ぶと 50:00 と表示される）。
+ *
+ * running / paused の最中は計測を壊さないよう長さだけを更新する。
+ */
 export function setCountdownDuration(s: CountdownState, durationMs: number): CountdownState {
-  return { ...s, durationMs: Math.max(0, durationMs) };
+  const next = Math.max(0, durationMs);
+  if (s.status === "idle" || s.status === "completed") return createIdleCountdown(next);
+  return { ...s, durationMs: next };
 }
 
 /** now - startedAt - accumulatedPauseMs。setInterval の回数は数えない（docs/CLAUDE.md）。 */

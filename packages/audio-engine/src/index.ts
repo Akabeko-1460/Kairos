@@ -1,8 +1,8 @@
 export * from "./automation";
 export * from "./buffer-loader";
 export * from "./cell-scheduler";
-export { RECOMMENDED_TRANSITION_T, SoundscapeEngine } from "./engine";
-export type { SoundscapeEngineOptions } from "./engine";
+export { cuePatternDurationSec, RECOMMENDED_TRANSITION_T, SoundscapeEngine } from "./engine";
+export type { CuePattern, SoundscapeEngineOptions } from "./engine";
 export * from "./environment";
 export * from "./equal-power";
 export * from "./limiter";

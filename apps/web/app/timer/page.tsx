@@ -1,14 +1,18 @@
 "use client";
 
+import { DeletableChip } from "@/components/DeletableChip";
 import { FocusThemeSelector } from "@/components/FocusThemeSelector";
 import { NumberInput } from "@/components/NumberInput";
 import { TimerRing } from "@/components/TimerRing";
 import { VolumeSlider } from "@/components/VolumeSlider";
 import { useCountdownStore } from "@/hooks/useCountdown";
+import { useDurationPresetsStore, visibleDurationMinutes } from "@/hooks/useDurationPresets";
 import { useFreeplay } from "@/hooks/useFreeplay";
 import { useNow } from "@/hooks/useNow";
+import { usePendingDelete } from "@/hooks/usePendingDelete";
 import { useBackgroundArtStore } from "@/lib/backgroundArtStore";
 import { formatMmSs } from "@/lib/formatTime";
+import { TIMER_FINISH_CUE } from "@/lib/soundscapeRuntime";
 import { SOUND_THEMES } from "@/lib/soundThemes";
 import {
   countdownProgress,
@@ -21,7 +25,6 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 
 const buttonMotion = { whileHover: { scale: 1.04 }, whileTap: { scale: 0.95 } } as const;
-const DURATION_PRESETS_MIN = [5, 10, 15, 20, 25, 30, 45, 60];
 
 function statusLabel(status: string): string {
   switch (status) {
@@ -56,8 +59,19 @@ export default function TimerPage() {
     toggleFreeplayPause,
     masterVolume,
     setMasterVolume,
+    playCue,
+    cueRinging,
   } = useFreeplay();
   const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
+
+  const hiddenMinutes = useDurationPresetsStore((s) => s.hiddenMinutes);
+  const hideDuration = useDurationPresetsStore((s) => s.hideDuration);
+  const durationPresets = visibleDurationMinutes(hiddenMinutes);
+  const {
+    pendingId: pendingDeleteMinutes,
+    request: requestDelete,
+    clear: clearPendingDelete,
+  } = usePendingDelete<number>();
 
   const [selectedThemeId, setSelectedThemeId] = useState<ThemeId>(SOUND_THEMES[0]!.id);
   const [starting, setStarting] = useState(false);
@@ -75,7 +89,8 @@ export default function TimerPage() {
   const theme = SOUND_THEMES.find((t) => t.id === selectedThemeId) ?? SOUND_THEMES[0]!;
   const accent = theme.accent;
 
-  // 残り時間が尽きたら、鳴っている音をフェードアウトさせて completed へ確定させる。
+  // 残り時間が尽きたら、鳴っている音をフェードアウトさせて completed へ確定させ、
+  // 時間になったことをはっきり知らせる。
   // 「setInterval の回数は数えない」の原則通り、判定自体は毎フレーム @kairos/core の
   // 純粋関数（isCountdownFinished）で絶対時刻から再計算する。
   useEffect(() => {
@@ -83,8 +98,12 @@ export default function TimerPage() {
     if (isCountdownFinished(state, now)) {
       syncToNow();
       stopFreeplay();
+      // playCue はテーマのフェードバスを通らないので、直前の stopFreeplay()（フェードアウト）に
+      // 巻き込まれず鳴り続ける。Pomodoro の「軽い区切り」と違い、席を外していても気づけるよう
+      // 「ピピピピッ」を繰り返す。
+      playCue("sessionEnd", TIMER_FINISH_CUE);
     }
-  }, [running, state, now, syncToNow, stopFreeplay]);
+  }, [running, state, now, syncToNow, stopFreeplay, playCue]);
 
   // 設定画面（idle/completed）に入った瞬間から、選択中のサウンドと背景を再生しておく
   // （Home のフリー再生と同じ「選ぶ＝鳴る」体験）。engineReady を待たず、ここで直接
@@ -92,7 +111,8 @@ export default function TimerPage() {
   // Timers メニューはクリック時点で先取り初期化もしているが、それに頼り切らずこの
   // 画面自身でも起動できるようにして、Home以外の経路で来ても必ず鳴るようにする。
   useEffect(() => {
-    if (!isIdle || isPreviewingSelected) return;
+    // アラームが鳴っている間は戻さない（上の effect の説明を参照）。
+    if (!isIdle || isPreviewingSelected || cueRinging) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -108,7 +128,7 @@ export default function TimerPage() {
     return () => {
       cancelled = true;
     };
-  }, [isIdle, selectedThemeId, ensureEngine, playFreeplay, isPreviewingSelected]);
+  }, [isIdle, selectedThemeId, ensureEngine, playFreeplay, isPreviewingSelected, cueRinging]);
 
   useEffect(() => {
     setBackgroundArt({
@@ -120,9 +140,10 @@ export default function TimerPage() {
     });
   }, [theme, freeplayPlaying, setBackgroundArt]);
 
+  // カウントダウン中でもサウンドを選び直せる。Timer の再生は Home と同じ freeplay なので、
+  // 実行中に選んでもそのままクロスフェードで差し替わる（計測には一切影響しない）。
   const handleSelectTheme = async (id: ThemeId) => {
     setSelectedThemeId(id);
-    if (!isIdle) return;
     try {
       await ensureEngine();
       await playFreeplay(id);
@@ -271,23 +292,31 @@ export default function TimerPage() {
             <div className="w-full">
               <p className="mb-2 text-[10px] tracking-widest text-muted/60">DURATION</p>
               <div className="flex flex-wrap items-center gap-2">
-                {DURATION_PRESETS_MIN.map((min) => {
-                  const active = state.durationMs === min * 60_000;
-                  return (
-                    <button
-                      key={min}
-                      type="button"
-                      onClick={() => setDurationMs(min * 60_000)}
-                      className="rounded-full border px-4 py-1.5 text-xs"
-                      style={{
-                        borderColor: active ? accent : "var(--border)",
-                        color: active ? accent : "var(--muted)",
-                      }}
-                    >
-                      {min}分
-                    </button>
-                  );
-                })}
+                {durationPresets.map((min) => (
+                  <DeletableChip
+                    key={min}
+                    label={`${min}分`}
+                    active={state.durationMs === min * 60_000}
+                    accentColor={accent}
+                    // 最後の1つは削除させない（Pomodoro の Preset と同じ方針）。
+                    deletable={durationPresets.length > 1}
+                    pendingDelete={pendingDeleteMinutes === min}
+                    onSelect={() => setDurationMs(min * 60_000)}
+                    onRequestDelete={() => requestDelete(min)}
+                    onCancelDelete={clearPendingDelete}
+                    deleteAriaLabel={`${min}分 を削除`}
+                    onConfirmDelete={() => {
+                      hideDuration(min);
+                      // 消したプリセットを選んでいたら、残りの先頭へ寄せる
+                      // （選択が消えたまま宙に浮かないようにする）。
+                      if (state.durationMs === min * 60_000) {
+                        const fallback = durationPresets.find((m) => m !== min);
+                        if (fallback) setDurationMs(fallback * 60_000);
+                      }
+                      clearPendingDelete();
+                    }}
+                  />
+                ))}
                 <label className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs text-muted">
                   <NumberInput
                     min={1}
@@ -303,12 +332,11 @@ export default function TimerPage() {
             </div>
           )}
 
-          {isIdle && (
-            <div className="w-full">
-              <p className="mb-2 text-[10px] tracking-widest text-muted/60">SOUND</p>
-              <FocusThemeSelector selectedId={selectedThemeId} onSelect={handleSelectTheme} themes={SOUND_THEMES} />
-            </div>
-          )}
+          {/* SOUND は計測中も操作できる（サウンドの切り替えは計測に影響しない）。 */}
+          <div className="w-full">
+            <p className="mb-2 text-[10px] tracking-widest text-muted/60">SOUND</p>
+            <FocusThemeSelector selectedId={selectedThemeId} onSelect={handleSelectTheme} themes={SOUND_THEMES} />
+          </div>
 
           <div className="w-full max-w-[252px]">
             <VolumeSlider value={masterVolume} onChange={setMasterVolume} accentColor={accent} />

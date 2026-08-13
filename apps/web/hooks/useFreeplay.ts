@@ -16,8 +16,12 @@ export function useFreeplay() {
   const stopFreeplay = useSoundscapeRuntime((s) => s.stopFreeplay);
   const masterVolume = useSoundscapeRuntime((s) => s.masterVolume);
   const setMasterVolume = useSoundscapeRuntime((s) => s.setMasterVolume);
+  const playCue = useSoundscapeRuntime((s) => s.playCue);
+  const cueRinging = useSoundscapeRuntime((s) => s.cueRinging);
 
   return {
+    playCue,
+    cueRinging,
     engineReady,
     debugInfo,
     freeplayThemeId,

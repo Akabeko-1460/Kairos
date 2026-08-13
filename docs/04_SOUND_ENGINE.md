@@ -96,8 +96,13 @@ Break フェーズ（`shortBreak` → relax、`longBreak` → sleep）で使う
 （`ThemeSoundDefinition.kind` で区別。クロスフェード可否には影響しない — テーマ間の
 切り替えは常にクロスフェードする）。
 
-`apps/web/public/packs.json`（1テーマ分を抜粋。全5テーマの値は §4 の表と
-`packages/audio-engine/src/automation.ts` を参照）:
+`apps/web/public/packs.json`（1テーマ分を抜粋）。
+
+> **`packs.json` がテーマ定義とオートメーション値の唯一の源**（ADR-011）。
+> 以前は `packages/audio-engine/src/automation.ts` にも同じ値のミラーがあったが、
+> 手で同期し続ける前提が守られず Relax が乖離したため削除した。
+> 同ファイルには補間関数 `valueAt()` だけが残っている。
+> **§4 以降の表は設計意図の要約であり、数値の正はあくまで `packs.json`。**
 
 ```jsonc
 {
@@ -119,7 +124,7 @@ Break フェーズ（`shortBreak` → relax、`longBreak` → sleep）で使う
           ],
           "automation": { "pad": [ /* keyframes */ ], "texture": [], "pulse": [], "cellDensity": [], "reverbWet": [], "lowPassHz": [] }
         }
-        // work / move / relax / sleep も同じ形。§4 の表 + automation.ts が正。
+        // work / move / relax / sleep も同じ形。値の正はこの packs.json 自身（ADR-011）。
       },
       "cues": { "phaseEnd": "/audio/cues/soft_chime.wav", "sessionEnd": "/audio/cues/resolve.wav" }
     }
@@ -142,8 +147,8 @@ Endel の Scenario と同じ「開始 / 中間 / 終了」の弧を、
 `t` を使うため、25分でも50分でも同じ定義が機能します。
 
 rev.3（`03_ARCHITECTURE.md` ADR-004）から、この弧は5つのテーマ（study/work/move/relax/sleep）
-それぞれが個別に持ちます。実装は `packages/audio-engine/src/automation.ts`
-（`studyAutomation` などのエクスポート）が正で、下表はその設計根拠の要約です。
+それぞれが個別に持ちます。**値の正は `apps/web/public/packs.json`**（ADR-011）で、
+下表はその設計根拠の要約です。数値が食い違う場合は `packs.json` を信じてください。
 
 **rev.4（`03_ARCHITECTURE.md` ADR-009）で全テーマを再設計した。** 旧設計（rev.3系）は
 Study と Work がほぼ同じ構造（どちらも打楽器的な pulse を持つだけ）で使い分けが分かりにくく、
@@ -173,7 +178,7 @@ Study は **Study/Work/Move の中で唯一「拍」を持たない**テーマ�
 | Key / Scale / BPM | A Aeolian, 68bpm（拍としては聞こえない。一音の間隔の基準にのみ使う） |
 | Pad（主役） | 3テイクの和音を少しずつ変えて（Ensemble ドリフトで奥行きを出す）。装飾は最小限 |
 | Texture（主役） | ピンクノイズをさらに軽くローパス（4600Hz）して暖かく（ADR-007） |
-| Pulse (Sustain) | 0.16 — `generateArpeggioPulse` を極端に間引いた設定（8拍中1音のみ）。「拍」ではなく、まれに響く一音の余韻 |
+| Pulse (Sustain) | 0.16 — `generateArpeggioPulse` を極端に間引いた設定（8拍中2音のみ。主音と5度）。「拍」ではなく、まれに響く一音の余韻 |
 | Cell 発火頻度 | 約14秒に1回 |
 | Reverb (Sustain) | 0.16（小部屋、明瞭） |
 | Low-pass (Sustain) | 4800Hz（暖かい・低覚醒） |
@@ -256,9 +261,10 @@ that are easy for your brain to process"。ADR-008 で追加した柔らかい�
 | 項目 | 値 |
 |---|---|
 | Key / Scale / BPM | D Lydian, 64bpm |
-| Texture | 雨・葉音／波（自然音、ソフトファシネーション） |
-| Pulse (Rest) | 0.22 — `generateArpeggioPulse`（7拍で山なりに登り降り）。旧版よりテンポを落とし、減衰も長く緩やかに、音量も下げた |
-| Reverb (Rest) | 0.40（旧 0.65 から縮小） |
+| Pad (Rest) | 0.52 |
+| Texture (Rest) | 0.50 — 雨・波（Wikimedia の実録音。ソフトファシネーション） |
+| Pulse (Rest) | 0.32 — `generateArpeggioPulse`（7拍で山なりに登り降り）。旧版よりテンポを落とし、減衰も長く緩やかに |
+| Reverb (Rest) | 0.28（旧 0.65 から縮小） |
 | Low-pass (Rest) | 2000Hz |
 
 **設計根拠（ADR-009 で追加）**: 旧設計は pad 0.47→0.77、reverbWet 0.45→0.65 と大きく
@@ -310,7 +316,7 @@ t が進む（`apps/web/lib/soundscapeRuntime.ts` の `SLEEP_VIRTUAL_DURATION_SE
 | 拍の性格 | なし（極めて疎らな一音のみ） | あり・一定 76bpm（キック+ハット+コンピング動機） | あり・一定 128bpm（実際のドラムパターン） | なし（柔らかい旋律のみ） | なし（Onsetのみ柔らかい旋律） |
 | Pad の性格 | 静かな一定和音 | 木質/弦楽器ボディ共鳴（ADR-007） | 拍同期ポンピング（ADR-009） | 静かにほぼ一定 | Onset→Deepで継続的に減衰 |
 | Noise color | ピンク（さらに暖色化） | ピンク＋"room"（木質の部屋） | 軽いエア（控えめ） | 自然音（雨/波） | ブラウン（Deepでさらに減衰） |
-| Reverb | 小部屋 0.16–0.32 | 小部屋〜やや没入 0.22–0.36 | ほぼドライ 0.05–0.12 | ホール 0.32–0.40（ADR-009で縮小） | 0.42（Onset）→0.70（Deep、ADR-009で縮小） |
+| Reverb | 小部屋 0.16–0.32 | 小部屋〜やや没入 0.22–0.36 | ほぼドライ 0.05–0.12 | ホール 0.22–0.28（ADR-009で縮小） | 0.42（Onset）→0.70（Deep、ADR-009で縮小） |
 | Low-pass | 4800Hz | 7000Hz | 9800Hz | 2000–2800Hz | 1150Hz（Onset）→650Hz（Deep） |
 | Cell 発火頻度 | 約14秒に1回 | 約10秒に1回 | 約4.5秒に1回 | 約29–50秒に1回 | 約33秒（Onset）→約4分（Deep）に1回 |
 | Pomodoro での役割 | Focus（選択可） | Focus（選択可・既定） | Focus（選択可） | shortBreak（固定） | longBreak（固定）／Home フリー再生（実時間でフェーズ進行、ADR-008） |

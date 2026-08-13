@@ -1,5 +1,9 @@
 # 01. Endel 調査結果
 
+> **着手前に行った背景調査で、コードからの参照はありません。** 設計判断としての結論は
+> `03_ARCHITECTURE.md` の ADR-004〜011 に取り込み済みです。Endel の意匠・音源・商標を
+> 複製しないという方針は `CLAUDE.md` の禁止事項を参照してください。
+
 出典: endel.io 公式サイト（トップ / technology / science / scenarios / focus / adhd）、
 Endel サポート（endel.zendesk.com）、App Store 掲載情報、第三者レビュー記事。調査日: 2026-08-11。
 

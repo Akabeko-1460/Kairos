@@ -17,13 +17,51 @@
  * 出力は WAV（16bit PCM）。ffmpeg 等の外部エンコーダに依存しないための選択で、
  * decodeAudioData は WAV でも問題なく扱える。
  */
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "../apps/web/public");
 const SAMPLE_RATE = 44100;
+
+/**
+ * rev.3.1 以降、Cell・Cue・Relax の Texture は Wikimedia Commons の実録音を
+ * `packages/audio-engine/tools/process-real-audio.mjs` で加工したものに差し替わっている
+ * （出所・ライセンスは docs/ASSET_LICENSES.md）。
+ *
+ * **その加工元の生ファイルはリポジトリに含まれていない。** そのためこのスクリプトが
+ * 実音源を上書きしてしまうと、6本の音源を出所URLから再取得しない限り復元できない。
+ * ここに列挙したパスは既定で書き込みをスキップし、合成音のプレースホルダーに
+ * 戻したい場合だけ `KAIROS_REGENERATE_ALL=1` を明示的に指定させる。
+ */
+const REAL_AUDIO_OWNED = new Set([
+  "audio/cues/soft_chime.wav",
+  "audio/cues/resolve.wav",
+  "audio/relax/texture_rain.wav",
+  "audio/relax/texture_waves.wav",
+  "audio/study/cell_a3.wav",
+  "audio/study/cell_c4.wav",
+  "audio/study/cell_e4.wav",
+  "audio/study/cell_g4.wav",
+  "audio/work/cell_a3.wav",
+  "audio/work/cell_b3.wav",
+  "audio/work/cell_c4.wav",
+  "audio/work/cell_e4.wav",
+  "audio/move/cell_e4.wav",
+  "audio/move/cell_gs4.wav",
+  "audio/move/cell_b4.wav",
+  "audio/move/cell_cs5.wav",
+  "audio/relax/cell_d4.wav",
+  "audio/relax/cell_fs4.wav",
+  "audio/relax/cell_a4.wav",
+  "audio/relax/cell_cs5.wav",
+  "audio/sleep/cell_d3.wav",
+  "audio/sleep/cell_f3.wav",
+  "audio/sleep/cell_a3.wav",
+]);
+const REGENERATE_ALL = process.env.KAIROS_REGENERATE_ALL === "1";
+let skippedRealAudioCount = 0;
 
 // --- 決定的PRNG（packages/audio-engine/src/prng.ts と同じ mulberry32） ---
 function mulberry32(seed) {
@@ -68,6 +106,11 @@ function writeWavBuffer(samples, sampleRate) {
 }
 
 async function saveWav(relativePath, samples, sampleRate = SAMPLE_RATE) {
+  if (REAL_AUDIO_OWNED.has(relativePath) && !REGENERATE_ALL) {
+    skippedRealAudioCount += 1;
+    console.log(`  skip  ${relativePath} (実音源。上書きすると復元できないため保護)`);
+    return;
+  }
   const fullPath = path.join(PUBLIC_DIR, relativePath);
   await mkdir(path.dirname(fullPath), { recursive: true });
   await writeFile(fullPath, writeWavBuffer(samples, sampleRate));
@@ -603,9 +646,13 @@ function generateIR(durationSec, decayRate, seed, cutoffHz = 6000) {
 
 // --- 実行 ---
 async function main() {
-  // 旧レイアウト(focus/break)の残骸を含め、audio/ir配下を作り直す。
-  await rm(path.join(PUBLIC_DIR, "audio"), { recursive: true, force: true });
-  await rm(path.join(PUBLIC_DIR, "ir"), { recursive: true, force: true });
+  // ここでは audio/ir ディレクトリを消さない。かつては旧レイアウト(focus/break)の残骸を
+  // 掃除するために丸ごと削除していたが、その残骸は rev.3 で無くなった一方、
+  // 実音源（REAL_AUDIO_OWNED、生ファイルはリポジトリに無い）まで巻き添えで消してしまう
+  // 危険だけが残っていた。各ファイルは saveWav が個別に上書きするので削除は不要。
+  if (REGENERATE_ALL) {
+    console.log("⚠ KAIROS_REGENERATE_ALL=1: 実音源も合成音のプレースホルダーで上書きします。\n");
+  }
 
   console.log("Study 層を生成中...（A aeolian, 68bpm — 拍を持たない没入型。Pad+ピンクノイズが主役）");
   // ADR-009: Study と Work の差別化を明確にするため、Study は3テイクとも和音を少しずつ
@@ -738,6 +785,12 @@ async function main() {
   await saveWav("ir/hall_deep.wav", generateIR(4.5, 0.9, 1704, 2500)); // Sleep: さらに長く暗いホール
 
   console.log("\n仮素材の生成が完了しました（WAV, ffmpeg不要）。");
+  if (skippedRealAudioCount > 0) {
+    console.log(
+      `実音源 ${skippedRealAudioCount} 件は保護のためスキップしました` +
+        "（Cell / Cue / Relax の Texture。出所は docs/ASSET_LICENSES.md）。",
+    );
+  }
   console.log("本番差し替え時は docs/04_SOUND_ENGINE.md §7 を参照し、OGG Vorbis + docs/ASSET_LICENSES.md 記録を行うこと。");
 }
 

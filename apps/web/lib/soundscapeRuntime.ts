@@ -1,12 +1,14 @@
 "use client";
 
 import {
+  cuePatternDurationSec,
   NEUTRAL_ENVIRONMENT,
   RECOMMENDED_TRANSITION_T,
   smoothEnvironment,
   SoundscapeEngine,
   targetEnvironmentModifier,
   timeOfDayFor,
+  type CuePattern,
   type EnvironmentModifier,
   type SoundPack,
   type ThemeId,
@@ -49,6 +51,39 @@ const LONG_BREAK_THEME: ThemeId = "sleep";
 
 export type PlaybackMode = "idle" | "freeplay" | "timer";
 export type EngineDebugInfo = ReturnType<SoundscapeEngine["getDebugInfo"]>;
+export type CueKind = "phaseEnd" | "sessionEnd";
+
+/**
+ * 終了通知音の鳴らし方。Pomodoro は区切りを「軽く」知らせるだけ（集中の流れを断ち切らない）、
+ * Timer は時間になったことを「しっかり」知らせる（席を外していても気づける）。
+ */
+const POMODORO_PHASE_END_CUE: CuePattern = { gain: 0.45 };
+const POMODORO_SESSION_END_CUE: CuePattern = { gain: 0.6, bursts: 2, burstIntervalSec: 1.1 };
+
+/**
+ * Timer の終了音。同じベル素材でも、余韻をそのまま鳴らすと Cell 層で流れている環境音のベルと
+ * 区別が付かない。**4音ひと組を一定間隔で4ループ**させ、音色ではなくリズムでアラームだと
+ * 分かるようにしている。
+ *
+ * テンポは「ベルの反響を活かす」ことを優先して抑えめにした。1音を短く刻みすぎると
+ * 素材が持つ響きが消えて電子音のようになってしまうため、1音を鳴らしきる余裕
+ * （`beepSec`）と、その響きが次の音とぶつからない間隔（`beepIntervalSec`）を確保している。
+ */
+export const TIMER_FINISH_CUE: CuePattern = {
+  gain: 1,
+  beeps: 4,
+  beepIntervalSec: 0.38,
+  beepSec: 0.34,
+  bursts: 4,
+  burstIntervalSec: 2.1,
+};
+
+/**
+ * アラームの最後の一音のあと、他の音を戻すまでに置く余白（秒）。
+ * これが無いと、時間切れの直後（実測で約0.2秒後）に設定画面のプレビューがテーマを
+ * 鳴らし直してしまい、せっかくの「ピピピピッ」がアンビエントに埋もれて聞き分けられなくなる。
+ */
+const CUE_HOLD_TAIL_SEC = 0.6;
 
 /**
  * タイマーの現在フェーズと、ユーザーが選んだ Focus テーマから、鳴らすべきテーマを1つに決める
@@ -75,6 +110,13 @@ interface SoundscapeRuntimeStore {
   /** Pomodoro の Focus フェーズで鳴らす/描くサウンドテーマ。デフォルトは "Study"。 */
   focusThemeId: ThemeId;
   /**
+   * 連打するタイプの通知音（Timer の終了アラーム）が鳴っている間だけ true。
+   * 画面側はこれを見て、鳴り終わるまでアンビエントを戻さないようにする。
+   * 「今どんな音が鳴っているか」は再生状態そのものなので、画面のローカル state ではなく
+   * 再生状態の所有者であるこのランタイムが持つ（ADR-011）。
+   */
+  cueRinging: boolean;
+  /**
    * マスター音量。Home/Pomodoro どちらの音量バーからも同じ値を読み書きする
    * （エンジンはページを跨いだシングルトンなので、音量もページ間で共有するのが自然）。
    */
@@ -89,6 +131,8 @@ interface SoundscapeRuntimeStore {
   regenerateFreeplay: () => void;
   stopFreeplay: () => void;
   setMasterVolume: (v: number) => void;
+  /** 終了通知音。テーマのフェードを経由しないので、音を止めるのと同時に呼んでも消えない。 */
+  playCue: (kind: CueKind, opts?: CuePattern) => void;
 }
 
 // このモジュールを跨いだ再インポートでも二重初期化しないよう、状態はモジュールスコープに持つ。
@@ -100,14 +144,21 @@ let loopStarted = false;
 let currentThemeIdRef: ThemeId | null = null;
 // playFreeplay() の重複呼び出し（SOUND選択クリックと設定画面プレビューeffectがほぼ同時に
 // 同じテーマを要求する等）で begin()/transitionTo() を二重に走らせないための in-flight ガード。
-// これが無いと、本来3秒かけて滑らかに変わるはずのクロスフェードが数百ms差で2つ重なり、
-// 「ゆっくり変わる」はずが唐突に音が変わったように聞こえてしまう（下記 playFreeplay 参照）。
-let pendingFreeplayThemeId: ThemeId | null = null;
+// これが無いと、本来のクロスフェードが数百ms差で2つ重なり、「ゆっくり変わる」はずが
+// 唐突に音が変わったように聞こえてしまう。
+//
+// **ガードは「実行中の再生要求」そのもの**であり、テーマIDだけを覚えてはいけない。
+// 以前はテーマIDを保持したまま成功時に解放していなかったため、timer モードのループが
+// `currentThemeIdRef` を裏で書き換えた後に同じテーマを再要求すると、ガードが恒久的に
+// 効いてエンジンへ何の指示も飛ばず、UI だけ再生中になって別テーマが鳴り続けていた。
+let freeplayRequest: { themeId: ThemeId; promise: Promise<void> } | null = null;
 let transitionArmed = false;
 let wasPaused = false;
 // Sleep のフリー再生専用の経過時間トラッカー（ADR-008）。playFreeplay("sleep") で 0 にリセットする。
 let freeplaySleepElapsedSec = 0;
 let freeplaySleepLastTickAtMs: number | null = null;
+/** 連打する通知音が鳴り終わるまでのタイマー（`cueRinging` を下ろす）。 */
+let cueHoldTimer: ReturnType<typeof setTimeout> | null = null;
 
 // --- 天気・時間帯・経過時間による環境モジュレーション（ADR-010） ---
 const WEATHER_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30分ごとに再取得すれば十分（天気は数分単位では変わらない）
@@ -175,8 +226,17 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
       const mode = get().mode;
 
       if (mode === "timer") {
+        // 「時間切れによるフェーズ遷移」だけを検出して合図音を鳴らす。syncToNow() は経過時間が
+        // フェーズ長を超えたときにしか進めないので、その前後で phase を比べれば、
+        // ユーザー操作による Skip / Reset と自然な終了を取り違えずに済む。
+        const phaseBefore = useTimerStore.getState().state.phase;
         useTimerStore.getState().syncToNow();
         const state = useTimerStore.getState().state;
+        if (state.phase !== phaseBefore) {
+          const cue: CueKind = state.phase === "completed" ? "sessionEnd" : "phaseEnd";
+          const opts = state.phase === "completed" ? POMODORO_SESSION_END_CUE : POMODORO_PHASE_END_CUE;
+          void engine.playCue(cue, opts).catch(logEngineError);
+        }
         const now = systemClock.now();
 
         const paused = isPaused(state);
@@ -271,6 +331,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     freeplayThemeId: null,
     freeplayPlaying: false,
     focusThemeId: "study",
+    cueRinging: false,
     masterVolume: 0.8,
 
     ensureEngine: async () => {
@@ -311,32 +372,45 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     setFocusThemeId: (id) => set({ focusThemeId: id }),
 
     playFreeplay: async (themeId) => {
-      // 同じテーマへの重複呼び出し（SOUND選択のクリックと設定画面プレビューeffectがほぼ
-      // 同時に同じテーマを要求する等）で begin()/transitionTo() を二重に走らせない。
-      // 二重に走ると、本来3秒かけて滑らかに変わるはずのクロスフェードが数百ms差で重なり、
-      // 「ゆっくり変わる」はずが唐突に音が変わったように聞こえてしまう。既に同じテーマへ
-      // 向かっている/到達済みなら、実際の再生要求は送らず状態フラグだけ揃えて抜ける。
-      if (pendingFreeplayThemeId === themeId) {
-        set({ mode: "freeplay", freeplayThemeId: themeId, freeplayPlaying: true });
+      // UI 側の状態は同期的に確定させる。各ページのプレビュー effect は
+      // `freeplayPlaying && freeplayThemeId === selectedId`（isPreviewingSelected）を見て
+      // 再実行を止めるので、ここを await より前に置くほど重複要求そのものが減る。
+      set({ mode: "freeplay", freeplayThemeId: themeId, freeplayPlaying: true });
+
+      // 同じテーマへの要求が「今まさに実行中」なら、その1本に相乗りする。
+      // 実行が終われば解放されるので、後からの再要求はきちんとエンジンへ届く。
+      const inFlight = freeplayRequest;
+      if (inFlight?.themeId === themeId) {
+        await inFlight.promise;
         return;
       }
-      pendingFreeplayThemeId = themeId;
-      const e = await get().ensureEngine();
-      set({ mode: "freeplay", freeplayThemeId: themeId, freeplayPlaying: true });
-      // 新しく再生を始めるたびに「入眠しなおす」ものとして経過時間をリセットする
-      // （テーマの切り替えでも、Sleep をもう一度選び直した場合でも同様）。
-      freeplaySleepElapsedSec = 0;
-      freeplaySleepLastTickAtMs = null;
-      // ADR-010: こちらは「音を鳴らし始めてからの経過時間」軸のセッション開始。テーマの
-      // 切り替え（Study→Work等）では継続して積算したいので、既に始まっていればリセットしない。
-      ensureEnvironmentSessionStarted();
-      try {
+
+      const request = (async () => {
+        const e = await get().ensureEngine();
+        // 新しく再生を始めるたびに「入眠しなおす」ものとして経過時間をリセットする
+        // （テーマの切り替えでも、Sleep をもう一度選び直した場合でも同様）。
+        freeplaySleepElapsedSec = 0;
+        freeplaySleepLastTickAtMs = null;
+        // ADR-010: こちらは「音を鳴らし始めてからの経過時間」軸のセッション開始。テーマの
+        // 切り替え（Study→Work等）では継続して積算したいので、既に始まっていればリセットしない。
+        ensureEnvironmentSessionStarted();
         // begin() は currentGraph が既にあれば自動でクロスフェードに切り替える。
         await e.begin(themeId, Date.now());
         currentThemeIdRef = themeId;
+      })();
+
+      freeplayRequest = { themeId, promise: request };
+      try {
+        await request;
       } catch (err) {
         logEngineError(err);
-        pendingFreeplayThemeId = null; // 失敗時は再試行できるようにする
+        // 実際には鳴っていないので「再生中」の表示のままにしない
+        // （鳴っていないのに freeplayPlaying が true だと、背景アートも活性のままになる）。
+        if (get().freeplayThemeId === themeId) set({ freeplayPlaying: false });
+        throw err; // 呼び出し側（各ページ）がエラー表示を出せるように伝播させる
+      } finally {
+        // 自分が最後に登録した要求のときだけ解放する（後続の要求を消さない）。
+        if (freeplayRequest?.promise === request) freeplayRequest = null;
       }
     },
 
@@ -367,7 +441,8 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
       set({ mode: "idle", freeplayThemeId: null, freeplayPlaying: false });
       void e.stop().catch(logEngineError);
       currentThemeIdRef = null;
-      pendingFreeplayThemeId = null;
+      // 停止したので、実行中の再生要求があってもそれを「到達済み」とみなしてはいけない。
+      freeplayRequest = null;
       freeplaySleepElapsedSec = 0;
       freeplaySleepLastTickAtMs = null;
       resetEnvironmentSession();
@@ -376,6 +451,25 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     setMasterVolume: (v) => {
       set({ masterVolume: v });
       engine?.setMasterVolume(v);
+    },
+
+    playCue: (kind, opts) => {
+      // エンジン未初期化なら鳴らしようがないので黙って諦める（通知が出ないだけで実害はない）。
+      void engine?.playCue(kind, opts).catch(logEngineError);
+
+      // 連打するパターンのときだけ「鳴っている」印を立てる。単発の合図（Pomodoro の区切り）は
+      // アンビエントに重なっても困らないので、待たせる必要がない。
+      const patternSec = cuePatternDurationSec(opts ?? {});
+      if (patternSec <= 0) return;
+      if (cueHoldTimer) clearTimeout(cueHoldTimer);
+      set({ cueRinging: true });
+      cueHoldTimer = setTimeout(
+        () => {
+          cueHoldTimer = null;
+          set({ cueRinging: false });
+        },
+        (patternSec + CUE_HOLD_TAIL_SEC) * 1000,
+      );
     },
   };
 });
