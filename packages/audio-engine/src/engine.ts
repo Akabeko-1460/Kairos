@@ -13,8 +13,15 @@ const SCHEDULE_AHEAD_SEC = 2.0;
 const DEFAULT_CROSSFADE_SEC = 6;
 /** `AudioContext.resume()` の待機を打ち切るまでの時間（`ensureRunning` 参照）。 */
 const RESUME_TIMEOUT_MS = 1500;
-/** 通知音を短く切り上げるときのリリース長。ぶつ切りのクリックノイズを防ぐ最小限の値。 */
-const CUE_BEEP_RELEASE_SEC = 0.02;
+/**
+ * 通知音を短く切り上げるときのリリース長を、1音の長さに対する比で決める。
+ *
+ * 固定の極短いリリースだとベルの余韻をぶつ切りにしてしまい、素材が本来持つ響きが死ぬ。
+ * 後半をなだらかに減衰させることで、切り上げつつも「鳴り終わった」と聞こえるようにする。
+ */
+const CUE_BEEP_RELEASE_RATIO = 0.45;
+/** ごく短い1音でもクリックノイズが出ないようにするリリースの下限。 */
+const CUE_BEEP_MIN_RELEASE_SEC = 0.02;
 
 /**
  * 通知音の鳴らし方。「`beeps` 個の連打（バースト）を `bursts` 回くり返す」という形で表す。
@@ -385,10 +392,12 @@ export class SoundscapeEngine {
         source.start(at);
 
         if (beepSec !== undefined) {
-          // 切り上げる直前に短いリリースを入れて、ぶつ切りのクリックノイズを防ぐ。
-          const release = Math.min(CUE_BEEP_RELEASE_SEC, beepSec / 2);
+          // 後半をなだらかに減衰させてから切る。素材（ベル）の余韻を残しつつ、
+          // 次の音が鳴る前に確実に鳴り止ませるための窓。
+          const release = Math.max(CUE_BEEP_MIN_RELEASE_SEC, beepSec * CUE_BEEP_RELEASE_RATIO);
+          const sustainUntil = Math.max(at, at + beepSec - release);
           cueGain.gain.setValueAtTime(level, at);
-          cueGain.gain.setValueAtTime(level, at + beepSec - release);
+          cueGain.gain.setValueAtTime(level, sustainUntil);
           cueGain.gain.linearRampToValueAtTime(0, at + beepSec);
           source.stop(at + beepSec);
         }

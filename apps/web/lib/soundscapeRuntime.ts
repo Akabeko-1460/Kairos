@@ -62,16 +62,20 @@ const POMODORO_SESSION_END_CUE: CuePattern = { gain: 0.6, bursts: 2, burstInterv
 
 /**
  * Timer の終了音。同じベル素材でも、余韻をそのまま鳴らすと Cell 層で流れている環境音のベルと
- * 区別が付かない。**短く刻んだ「ピピピピッ」を一定間隔で4ループ**させることで、
- * 音色ではなくリズムでアラームだと分かるようにしている。
+ * 区別が付かない。**4音ひと組を一定間隔で4ループ**させ、音色ではなくリズムでアラームだと
+ * 分かるようにしている。
+ *
+ * テンポは「ベルの反響を活かす」ことを優先して抑えめにした。1音を短く刻みすぎると
+ * 素材が持つ響きが消えて電子音のようになってしまうため、1音を鳴らしきる余裕
+ * （`beepSec`）と、その響きが次の音とぶつからない間隔（`beepIntervalSec`）を確保している。
  */
 export const TIMER_FINISH_CUE: CuePattern = {
   gain: 1,
   beeps: 4,
-  beepIntervalSec: 0.17,
-  beepSec: 0.13,
+  beepIntervalSec: 0.38,
+  beepSec: 0.34,
   bursts: 4,
-  burstIntervalSec: 1.3,
+  burstIntervalSec: 2.1,
 };
 
 /**

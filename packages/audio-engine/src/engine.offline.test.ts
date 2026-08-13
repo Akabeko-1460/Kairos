@@ -247,10 +247,12 @@ describe("SoundscapeEngine cue playback", () => {
    * 連打が滲まないこと（音と音の間にちゃんと隙間があること）まで確かめる。
    */
   it("plays a 4-beep burst four times, with clear gaps between bursts", async () => {
-    const beepIntervalSec = 0.17;
-    const beepSec = 0.13;
-    const burstIntervalSec = 1.3;
-    const ctx = controllableContext(6);
+    // 実際に Timer が使う値（apps/web/lib/soundscapeRuntime.ts の TIMER_FINISH_CUE）。
+    // ベルの響きを残すため、1音を鳴らしきる長さと、次の音とぶつからない間隔を取っている。
+    const beepIntervalSec = 0.38;
+    const beepSec = 0.34;
+    const burstIntervalSec = 2.1;
+    const ctx = controllableContext(9);
     const engine = await createEngine(ctx);
     engine.setMasterVolume(1);
     await engine.playCue("sessionEnd", {
@@ -274,31 +276,38 @@ describe("SoundscapeEngine cue playback", () => {
         const at = burstStart + beep * beepIntervalSec;
         expect(levelAt(at + 0.01, 0.05), `${burst + 1}回目の${beep + 1}音目が鳴っていない`).toBeGreaterThan(0.01);
       }
-      // 4音目が切り上がったあと、次のバーストまでは静か（連打が滲んでいない）
+      // 4音目が鳴り止んだあと、次のバーストまでは静か（響きが次のループへ滲んでいない）
       const gapStart = burstStart + 3 * beepIntervalSec + beepSec + 0.05;
-      expect(levelAt(gapStart, 0.2), `${burst + 1}回目のバーストの後に間が空いていない`).toBeLessThan(0.01);
+      expect(levelAt(gapStart, 0.15), `${burst + 1}回目のバーストの後に間が空いていない`).toBeLessThan(0.01);
     }
   }, 30_000);
 
-  it("cuts each beep short so the bell's long tail cannot smear the rhythm", async () => {
+  it("lets the bell ring for beepSec, then stops it before the next beat", async () => {
+    const beepSec = 0.34;
     const ctx = controllableContext(3);
     const engine = await createEngine(ctx);
     engine.setMasterVolume(1);
-    // 素材（2秒のベル）をそのまま鳴らすと余韻が続くが、beepSec を指定すれば短く切れる
-    await engine.playCue("sessionEnd", { gain: 1, beepSec: 0.13 });
+    // 素材（2秒のベル）をそのまま鳴らすと余韻が延々と続くが、beepSec を指定すれば
+    // その長さだけ響かせて鳴り止む。
+    await engine.playCue("sessionEnd", { gain: 1, beepSec });
 
     const data = await renderAndDispose(ctx, engine);
-    const from = Math.round(0.3 * SAMPLE_RATE);
-    expect(rms(data.subarray(from, from + Math.round(0.5 * SAMPLE_RATE)))).toBeLessThan(0.01);
+    const rmsBetween = (fromSec: number, toSec: number) =>
+      rms(data.subarray(Math.round(fromSec * SAMPLE_RATE), Math.round(toSec * SAMPLE_RATE)));
+
+    // 指定した長さの間はしっかり鳴っている（＝響きが潰れていない）
+    expect(rmsBetween(0.02, beepSec - 0.02)).toBeGreaterThan(0.01);
+    // 鳴り終わったあとは無音（次の一音とぶつからない）
+    expect(rmsBetween(beepSec + 0.05, beepSec + 0.6)).toBeLessThan(0.01);
   }, 30_000);
 });
 
 describe("cuePatternDurationSec", () => {
   it("covers the whole burst pattern so callers can hold other audio back", () => {
-    // 4連打 × 4ループ: 最後のバーストの開始(3×1.3) + 最後の一音の開始(3×0.17) + その音の長さ
+    // 4音 × 4ループ: 最後のバーストの開始(3×2.1) + 最後の一音の開始(3×0.38) + その音の長さ
     expect(
-      cuePatternDurationSec({ beeps: 4, beepIntervalSec: 0.17, bursts: 4, burstIntervalSec: 1.3, beepSec: 0.13 }),
-    ).toBeCloseTo(3 * 1.3 + 3 * 0.17 + 0.13, 6);
+      cuePatternDurationSec({ beeps: 4, beepIntervalSec: 0.38, bursts: 4, burstIntervalSec: 2.1, beepSec: 0.34 }),
+    ).toBeCloseTo(3 * 2.1 + 3 * 0.38 + 0.34, 6);
   });
 
   it("is zero for a single full-length hit (the material length is unknown here)", () => {
