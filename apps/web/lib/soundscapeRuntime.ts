@@ -100,9 +100,14 @@ let loopStarted = false;
 let currentThemeIdRef: ThemeId | null = null;
 // playFreeplay() の重複呼び出し（SOUND選択クリックと設定画面プレビューeffectがほぼ同時に
 // 同じテーマを要求する等）で begin()/transitionTo() を二重に走らせないための in-flight ガード。
-// これが無いと、本来3秒かけて滑らかに変わるはずのクロスフェードが数百ms差で2つ重なり、
-// 「ゆっくり変わる」はずが唐突に音が変わったように聞こえてしまう（下記 playFreeplay 参照）。
-let pendingFreeplayThemeId: ThemeId | null = null;
+// これが無いと、本来のクロスフェードが数百ms差で2つ重なり、「ゆっくり変わる」はずが
+// 唐突に音が変わったように聞こえてしまう。
+//
+// **ガードは「実行中の再生要求」そのもの**であり、テーマIDだけを覚えてはいけない。
+// 以前はテーマIDを保持したまま成功時に解放していなかったため、timer モードのループが
+// `currentThemeIdRef` を裏で書き換えた後に同じテーマを再要求すると、ガードが恒久的に
+// 効いてエンジンへ何の指示も飛ばず、UI だけ再生中になって別テーマが鳴り続けていた。
+let freeplayRequest: { themeId: ThemeId; promise: Promise<void> } | null = null;
 let transitionArmed = false;
 let wasPaused = false;
 // Sleep のフリー再生専用の経過時間トラッカー（ADR-008）。playFreeplay("sleep") で 0 にリセットする。
@@ -311,32 +316,45 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     setFocusThemeId: (id) => set({ focusThemeId: id }),
 
     playFreeplay: async (themeId) => {
-      // 同じテーマへの重複呼び出し（SOUND選択のクリックと設定画面プレビューeffectがほぼ
-      // 同時に同じテーマを要求する等）で begin()/transitionTo() を二重に走らせない。
-      // 二重に走ると、本来3秒かけて滑らかに変わるはずのクロスフェードが数百ms差で重なり、
-      // 「ゆっくり変わる」はずが唐突に音が変わったように聞こえてしまう。既に同じテーマへ
-      // 向かっている/到達済みなら、実際の再生要求は送らず状態フラグだけ揃えて抜ける。
-      if (pendingFreeplayThemeId === themeId) {
-        set({ mode: "freeplay", freeplayThemeId: themeId, freeplayPlaying: true });
+      // UI 側の状態は同期的に確定させる。各ページのプレビュー effect は
+      // `freeplayPlaying && freeplayThemeId === selectedId`（isPreviewingSelected）を見て
+      // 再実行を止めるので、ここを await より前に置くほど重複要求そのものが減る。
+      set({ mode: "freeplay", freeplayThemeId: themeId, freeplayPlaying: true });
+
+      // 同じテーマへの要求が「今まさに実行中」なら、その1本に相乗りする。
+      // 実行が終われば解放されるので、後からの再要求はきちんとエンジンへ届く。
+      const inFlight = freeplayRequest;
+      if (inFlight?.themeId === themeId) {
+        await inFlight.promise;
         return;
       }
-      pendingFreeplayThemeId = themeId;
-      const e = await get().ensureEngine();
-      set({ mode: "freeplay", freeplayThemeId: themeId, freeplayPlaying: true });
-      // 新しく再生を始めるたびに「入眠しなおす」ものとして経過時間をリセットする
-      // （テーマの切り替えでも、Sleep をもう一度選び直した場合でも同様）。
-      freeplaySleepElapsedSec = 0;
-      freeplaySleepLastTickAtMs = null;
-      // ADR-010: こちらは「音を鳴らし始めてからの経過時間」軸のセッション開始。テーマの
-      // 切り替え（Study→Work等）では継続して積算したいので、既に始まっていればリセットしない。
-      ensureEnvironmentSessionStarted();
-      try {
+
+      const request = (async () => {
+        const e = await get().ensureEngine();
+        // 新しく再生を始めるたびに「入眠しなおす」ものとして経過時間をリセットする
+        // （テーマの切り替えでも、Sleep をもう一度選び直した場合でも同様）。
+        freeplaySleepElapsedSec = 0;
+        freeplaySleepLastTickAtMs = null;
+        // ADR-010: こちらは「音を鳴らし始めてからの経過時間」軸のセッション開始。テーマの
+        // 切り替え（Study→Work等）では継続して積算したいので、既に始まっていればリセットしない。
+        ensureEnvironmentSessionStarted();
         // begin() は currentGraph が既にあれば自動でクロスフェードに切り替える。
         await e.begin(themeId, Date.now());
         currentThemeIdRef = themeId;
+      })();
+
+      freeplayRequest = { themeId, promise: request };
+      try {
+        await request;
       } catch (err) {
         logEngineError(err);
-        pendingFreeplayThemeId = null; // 失敗時は再試行できるようにする
+        // 実際には鳴っていないので「再生中」の表示のままにしない
+        // （鳴っていないのに freeplayPlaying が true だと、背景アートも活性のままになる）。
+        if (get().freeplayThemeId === themeId) set({ freeplayPlaying: false });
+        throw err; // 呼び出し側（各ページ）がエラー表示を出せるように伝播させる
+      } finally {
+        // 自分が最後に登録した要求のときだけ解放する（後続の要求を消さない）。
+        if (freeplayRequest?.promise === request) freeplayRequest = null;
       }
     },
 
@@ -367,7 +385,8 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
       set({ mode: "idle", freeplayThemeId: null, freeplayPlaying: false });
       void e.stop().catch(logEngineError);
       currentThemeIdRef = null;
-      pendingFreeplayThemeId = null;
+      // 停止したので、実行中の再生要求があってもそれを「到達済み」とみなしてはいけない。
+      freeplayRequest = null;
       freeplaySleepElapsedSec = 0;
       freeplaySleepLastTickAtMs = null;
       resetEnvironmentSession();

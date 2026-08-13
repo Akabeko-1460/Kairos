@@ -30,6 +30,7 @@ export default function HomePage() {
 
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [subtitle, setSubtitle] = useState("");
+  const [audioError, setAudioError] = useState<string | null>(null);
 
   // mode が "freeplay" でない間（Pomodoro/Timer/Stopwatch を経由した直後など）は
   // freeplayThemeId が古い選択を持ち越していても無視し、必ず「Kairos」の初期表示に戻す。
@@ -65,6 +66,12 @@ export default function HomePage() {
       await ensureEngine();
       setSubtitle(pick(entry.subtitles));
       await playFreeplay(entry.id);
+      setAudioError(null);
+    } catch (err) {
+      // playFreeplay は失敗を呼び出し側へ伝播する。ここで拾わないと未処理の Promise 拒否になり、
+      // かつ利用者には何も表示されないまま無音になる（Pomodoro/Timer/Stopwatch と同じ扱いにする）。
+      console.error("[Kairos] SoundscapeEngine error:", err);
+      setAudioError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoadingId(null);
     }
@@ -89,6 +96,9 @@ export default function HomePage() {
             </p>
           </motion.div>
         </AnimatePresence>
+        {audioError && (
+          <p className="max-w-xs text-center text-[11px] text-red-400">サウンドの再生に失敗しました: {audioError}</p>
+        )}
       </div>
 
       <div className="mb-10 flex max-w-2xl flex-wrap items-center justify-center gap-5">
