@@ -4,6 +4,7 @@ import { NEUTRAL_ENVIRONMENT, type EnvironmentModifier } from "./environment";
 import { createCompressorLimiter, type Limiter } from "./limiter";
 import { PhaseGraph } from "./phase-graph";
 import type { LayerRole, SoundPack, ThemeId } from "./types";
+
 import { IntervalTicker, WorkerTicker, type Ticker } from "./worker-ticker";
 
 /** 常に2〜3秒先までイベントを予約しておく（docs/04_SOUND_ENGINE.md §6.1）。 */
@@ -299,6 +300,47 @@ export class SoundscapeEngine {
     this.masterVolume = Math.max(0, Math.min(1, v));
     if (!this.ctx || !this.volumeGain) return; // init() 前でも値は保持し、init() 時に反映する
     this.volumeGain.gain.linearRampToValueAtTime(this.masterVolume, this.ctx.currentTime + 0.05);
+  }
+
+  /**
+   * フェーズ/セッションの終了を知らせるワンショット（`SoundPack.cues`）を鳴らす。
+   *
+   * **テーマのフェードバス（masterGain）は経由せず、ユーザー音量（volumeGain）へ直結する。**
+   * 終了と同時にテーマをフェードアウト・停止させる画面があるため、フェードバスに乗せると
+   * 肝心の通知音まで一緒に消えてしまう。通知は「鳴っている音の状態によらず必ず届く」ことが
+   * 役割なので、音量設定にだけ従わせる。
+   *
+   * `times` を2以上にすると `intervalSec` 間隔で繰り返す（サンプル精度でまとめて予約するので、
+   * メインスレッドが詰まってもリズムは崩れない）。
+   */
+  async playCue(
+    kind: keyof SoundPack["cues"],
+    opts: { gain?: number; times?: number; intervalSec?: number } = {},
+  ): Promise<void> {
+    const { gain = 0.9, times = 1, intervalSec = 0.9 } = opts;
+    if (!this.ctx || !this.volumeGain || !this.bufferLoader || !this.pack) return;
+    await this.ensureRunning();
+    const url = this.pack.cues[kind];
+    if (!url) return;
+    const buffer = await this.bufferLoader.load(url);
+    // ロード待ちの間に dispose された可能性があるため、使う直前に取り直す
+    const ctx = this.ctx;
+    const destination = this.volumeGain;
+    if (!ctx || !destination) return;
+
+    const startAt = ctx.currentTime;
+    for (let i = 0; i < Math.max(1, times); i++) {
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      const cueGain = ctx.createGain();
+      cueGain.gain.value = Math.max(0, Math.min(1, gain));
+      source.connect(cueGain).connect(destination);
+      source.start(startAt + i * intervalSec);
+      source.onended = () => {
+        source.disconnect();
+        cueGain.disconnect();
+      };
+    }
   }
 
   setLayerTrim(_role: LayerRole, _v: number): void {

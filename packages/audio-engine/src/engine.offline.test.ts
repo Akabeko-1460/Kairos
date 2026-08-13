@@ -220,6 +220,43 @@ describe("SoundscapeEngine master volume", () => {
   }, 30_000);
 });
 
+describe("SoundscapeEngine cue playback", () => {
+  /**
+   * 通知音はテーマのフェードバスを経由しないので、停止（フェードアウト）と同時に鳴らしても
+   * 一緒に消えてはいけない。Timer は「時間切れ → 音を止める → 終了を知らせる」という順で
+   * 呼ぶため、ここが守られていないと肝心の通知が聞こえなくなる。
+   */
+  it("stays audible even when the theme is being faded out at the same time", async () => {
+    const ctx = controllableContext(3);
+    const engine = await createEngine(ctx);
+    engine.setMasterVolume(1);
+    await engine.begin("study", 1);
+    engine.tick(0.5);
+    await engine.stop(0.2); // テーマをフェードアウトさせる
+    await engine.playCue("sessionEnd", { gain: 0.9 });
+
+    const data = await renderAndDispose(ctx, engine);
+    // フェードが終わったあとの区間に、通知音が実際に鳴っていること
+    const afterFade = data.subarray(Math.round(0.6 * SAMPLE_RATE));
+    expect(rms(afterFade)).toBeGreaterThan(0.01);
+  }, 30_000);
+
+  it("schedules repeats at the requested interval", async () => {
+    const ctx = controllableContext(4);
+    const engine = await createEngine(ctx);
+    engine.setMasterVolume(1);
+    await engine.playCue("sessionEnd", { gain: 0.9, times: 3, intervalSec: 1 });
+
+    const data = await renderAndDispose(ctx, engine);
+    // 1秒ごとに3回鳴るので、各回の開始直後の窓はいずれも無音でない
+    for (const sec of [0, 1, 2]) {
+      const from = Math.round(sec * SAMPLE_RATE);
+      const window = data.subarray(from, from + Math.round(0.2 * SAMPLE_RATE));
+      expect(rms(window), `${sec}秒地点で通知音が鳴っていない`).toBeGreaterThan(0.01);
+    }
+  }, 30_000);
+});
+
 describe("SoundscapeEngine pause/resume lifecycle", () => {
   /**
    * `pause()` は fadeOutSec 後に `suspend()` を予約する。その待ち時間中に `resume()` されたら
