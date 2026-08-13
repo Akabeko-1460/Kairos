@@ -1,9 +1,11 @@
 "use client";
 
+import { usePendingDelete } from "@/hooks/usePendingDelete";
 import { usePresetsStore } from "@/hooks/usePresets";
 import { CLASSIC_PRESET, DEEP_PRESET, type PomodoroPreset } from "@kairos/core";
 import { useEffect, useState } from "react";
 import { CustomPresetModal } from "./CustomPresetModal";
+import { DeletableChip } from "./DeletableChip";
 
 interface PresetSelectorProps {
   selectedId: string;
@@ -19,7 +21,8 @@ export function PresetSelector({ selectedId, accentColor, onSelect }: PresetSele
   const hideBuiltinPreset = usePresetsStore((s) => s.hideBuiltinPreset);
 
   const [showModal, setShowModal] = useState(false);
-  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  // ゴミ箱は他の場所をクリック（または Escape）で必ず引っ込む。
+  const { pendingId: pendingDeleteId, request: requestDelete, clear: clearPendingDelete } = usePendingDelete<string>();
 
   // ビルトイン(Classic/Deep)もカスタムプリセットと同じように右クリック削除できるようにする。
   // ビルトインは定数のため配列から取り除くのではなく hiddenBuiltinIds に載せて非表示にする。
@@ -38,57 +41,31 @@ export function PresetSelector({ selectedId, accentColor, onSelect }: PresetSele
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {allPresets.map((preset) => {
-        const active = preset.id === selectedId;
-        const pendingDelete = pendingDeleteId === preset.id;
-        // 最後の1つは削除させない（プリセットが0件になるとPomodoroが選べなくなるため）。
-        const deletable = allPresets.length > 1;
-        return (
-          <div key={preset.id} className="relative">
-            <button
-              type="button"
-              onClick={() => {
-                if (pendingDelete) {
-                  setPendingDeleteId(null);
-                  return;
-                }
-                onSelect(preset);
-              }}
-              onContextMenu={(e) => {
-                if (!deletable) return;
-                e.preventDefault();
-                setPendingDeleteId(preset.id);
-              }}
-              className="rounded-full border px-4 py-1.5 text-xs"
-              style={{
-                borderColor: active ? accentColor : "var(--border)",
-                color: active ? accentColor : "var(--muted)",
-              }}
-            >
-              {preset.label}
-            </button>
-            {pendingDelete && (
-              <button
-                type="button"
-                aria-label={`${preset.label} を削除`}
-                onClick={() => {
-                  const remaining = allPresets.filter((p) => p.id !== preset.id);
-                  if (preset.isCustom) {
-                    removeCustomPreset(preset.id);
-                  } else {
-                    hideBuiltinPreset(preset.id);
-                  }
-                  if (active) onSelect(remaining[0] ?? CLASSIC_PRESET);
-                  setPendingDeleteId(null);
-                }}
-                className="absolute -right-2 -top-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] text-white shadow"
-              >
-                🗑
-              </button>
-            )}
-          </div>
-        );
-      })}
+      {allPresets.map((preset) => (
+        <DeletableChip
+          key={preset.id}
+          label={preset.label}
+          active={preset.id === selectedId}
+          accentColor={accentColor}
+          // 最後の1つは削除させない（プリセットが0件になるとPomodoroが選べなくなるため）。
+          deletable={allPresets.length > 1}
+          pendingDelete={pendingDeleteId === preset.id}
+          onSelect={() => onSelect(preset)}
+          onRequestDelete={() => requestDelete(preset.id)}
+          onCancelDelete={clearPendingDelete}
+          deleteAriaLabel={`${preset.label} を削除`}
+          onConfirmDelete={() => {
+            const remaining = allPresets.filter((p) => p.id !== preset.id);
+            if (preset.isCustom) {
+              removeCustomPreset(preset.id);
+            } else {
+              hideBuiltinPreset(preset.id);
+            }
+            if (preset.id === selectedId) onSelect(remaining[0] ?? CLASSIC_PRESET);
+            clearPendingDelete();
+          }}
+        />
+      ))}
 
       <button
         type="button"
