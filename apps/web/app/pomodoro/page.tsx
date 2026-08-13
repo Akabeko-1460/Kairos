@@ -206,6 +206,11 @@ export default function PomodoroPage() {
     });
   }, [state, isIdle, isBreakPhase, focusTheme, freeplayPlaying, setBackgroundArt]);
 
+  // セッション実行中でも Focus のサウンドを選び直せる。
+  // 実行中は TimerState 駆動の再生（mode === "timer"）なので、ここで playFreeplay を呼んで
+  // しまうと mode が "freeplay" に落ちてフェーズ連動が壊れる。focusThemeId を更新するだけで、
+  // soundscapeRuntime の毎tickの themeIdForTimerPhase() が変化を拾ってクロスフェードする。
+  // Break 中の変更は音としては次の Focus から反映される（休憩のテーマは固定のため）。
   const handleSelectFocusTheme = async (id: ThemeId) => {
     setFocusThemeId(id);
     if (!isIdle) return;
@@ -424,12 +429,14 @@ export default function PomodoroPage() {
             </div>
           )}
 
-          {isIdle && (
-            <div className="w-full">
-              <p className="mb-2 text-[10px] tracking-widest text-muted/60">SOUND</p>
-              <FocusThemeSelector selectedId={focusThemeId} onSelect={handleSelectFocusTheme} />
-            </div>
-          )}
+          {/* SOUND はセッション実行中も操作できる（切り替えても集中/休憩の進行には影響しない）。 */}
+          <div className="w-full">
+            <p className="mb-2 text-[10px] tracking-widest text-muted/60">SOUND</p>
+            <FocusThemeSelector selectedId={focusThemeId} onSelect={handleSelectFocusTheme} />
+            {isBreakPhase && (
+              <p className="mt-2 text-[10px] leading-5 text-muted/60">休憩中の音は固定です。選び直した音は次の集中から鳴ります。</p>
+            )}
+          </div>
 
           {/*
             音量バーはSOUNDセクションの直後に置く。isIdleで出し分けず常時表示することで、

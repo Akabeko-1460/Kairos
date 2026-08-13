@@ -99,9 +99,10 @@ export default function StopwatchPage() {
     });
   }, [theme, freeplayPlaying, setBackgroundArt]);
 
+  // 計測中でもサウンドを選び直せる。Stopwatch の再生は Home と同じ freeplay なので、
+  // 実行中に選んでもそのままクロスフェードで差し替わる（計測には一切影響しない）。
   const handleSelectTheme = async (id: ThemeId) => {
     setSelectedThemeId(id);
-    if (!isIdle) return;
     try {
       await ensureEngine();
       await playFreeplay(id);
@@ -244,12 +245,11 @@ export default function StopwatchPage() {
         </div>
 
         <div className="flex w-full max-w-sm flex-col items-center gap-8 lg:items-start">
-          {isIdle && (
-            <div className="w-full">
-              <p className="mb-2 text-[10px] tracking-widest text-muted/60">SOUND</p>
-              <FocusThemeSelector selectedId={selectedThemeId} onSelect={handleSelectTheme} themes={SOUND_THEMES} />
-            </div>
-          )}
+          {/* SOUND は計測中も操作できる（サウンドの切り替えは計測に影響しない）。 */}
+          <div className="w-full">
+            <p className="mb-2 text-[10px] tracking-widest text-muted/60">SOUND</p>
+            <FocusThemeSelector selectedId={selectedThemeId} onSelect={handleSelectTheme} themes={SOUND_THEMES} />
+          </div>
 
           <div className="w-full max-w-[252px]">
             <VolumeSlider value={masterVolume} onChange={setMasterVolume} accentColor={accent} />
