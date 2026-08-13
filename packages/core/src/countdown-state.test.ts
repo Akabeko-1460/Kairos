@@ -10,6 +10,7 @@ import {
   countdownRemainingMs,
   resetCountdown,
   resumeCountdown,
+  setCountdownDuration,
   startCountdown,
   syncCountdownToNow,
 } from "./countdown-state";
@@ -65,6 +66,32 @@ describe("countdown-state", () => {
     expect(isCountdownPaused(s)).toBe(false);
     expect(countdownElapsedMs(s, T0 + 10 * 60_000 + 60_000)).toBe(60_000);
     expect(countdownElapsedMs(s, T0 + 10 * 60_000 + 60_000 + 60_000)).toBe(2 * 60_000);
+  });
+
+  it("shows the newly chosen duration in full after the previous countdown completed", () => {
+    // 回帰: 完了状態は startedAt を持ったままなので、durationMs だけ差し替えると
+    // 「新しい長さ − 前回の経過時間」が残り時間になってしまっていた
+    // （10分で完了 → 60分を選ぶと 50:00 と表示される）。
+    let s = createIdleCountdown(TEN_MIN_MS);
+    s = startCountdown(s, T0);
+    const end = T0 + TEN_MIN_MS;
+    s = syncCountdownToNow(s, end);
+    expect(s.status).toBe("completed");
+
+    s = setCountdownDuration(s, 60 * 60_000);
+    expect(s.status).toBe("idle");
+    expect(countdownRemainingMs(s, end)).toBe(60 * 60_000);
+    expect(countdownProgress(s, end)).toBe(0);
+  });
+
+  it("keeps a running countdown running when its duration is changed", () => {
+    let s = createIdleCountdown(TEN_MIN_MS);
+    s = startCountdown(s, T0);
+    s = setCountdownDuration(s, 20 * 60_000);
+    expect(s.status).toBe("running");
+    // 経過1分は保たれたまま、残りだけが新しい長さに追従する
+    expect(countdownElapsedMs(s, T0 + 60_000)).toBe(60_000);
+    expect(countdownRemainingMs(s, T0 + 60_000)).toBe(19 * 60_000);
   });
 
   it("resetCountdown returns to idle with the same duration", () => {
