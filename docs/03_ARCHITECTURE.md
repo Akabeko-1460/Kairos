@@ -1,4 +1,17 @@
-# 03. アーキテクチャ・技術選定（rev.2）
+# 03. アーキテクチャ・技術選定
+
+> **このファイルの読み方**
+>
+> 本文の ADR-001〜ADR-011 は**現役の設計判断の記録**で、ソースコードのコメントから
+> 約50箇所参照されている（`ADR-009` などの番号で検索できる）。判断を変えるときは
+> 既存の ADR を書き換えるのではなく、新しい ADR を追記すること。
+>
+> 一方、ADR 以外の記述（技術スタック表・ディレクトリ構成図など）は初期に書かれたもので、
+> 実装が先に進んだ結果ずれていた箇所がある。**迷ったら常に実装が正**。
+> 特に次の3点は実装を直接見ること:
+> - オートメーションの実際の値 → `apps/web/public/packs.json`（唯一の源。ADR-011）
+> - 画面構成 → `apps/web/app/` 配下の実ファイル
+> - 依存バージョン → 各 `package.json`
 
 ---
 
@@ -25,7 +38,11 @@
 ## ADR-002: フレームワークは Next.js (App Router)
 
 ### 決定
-**Next.js 15 + React 19 + TypeScript**。`output: 'export'` による静的書き出し。
+**Next.js (App Router) + React + TypeScript**。`output: 'export'` による静的書き出し。
+
+> 採用時は Next.js 15 / React 19。現在は **Next.js 16 (Turbopack) / React 19**
+> （正確なバージョンは `apps/web/package.json`）。App Router と `output: 'export'` という
+> 判断そのものは変わっていない。
 
 ### 理由
 - 開発者が慣れており、UI 実装で悩む時間をゼロにできる。**音作りに時間を使うため**
@@ -40,7 +57,7 @@ Next.js は実質「使い慣れた React ビルダー」として機能しま�
 
 **実装上の帰結:**
 - すべてのページ・コンポーネントは `'use client'`
-- `next.config.js` に `output: 'export'` を設定
+- `next.config.ts` に `output: 'export'` を設定
 - 音声・タイマー関連のコードは **SSR 時に評価されてはならない**（`window` / `AudioContext` が無い）。
   動的 import か `useEffect` 内での初期化を徹底する
 
@@ -139,8 +156,8 @@ rev.2 までは Home 画面に Study/Work/Relax/Sleep/Move の5カテゴリが�
 - **ノイズ色**: ピンクノイズ(Study/Work)・ブラウンノイズ(Sleep)・軽い高域寄りのエア質感(Move)は
   それぞれ効果の方向性が違う（Gemini報告 §1.1）
 - **テンポ**: 安静時心拍に近い一定テンポ(Study 68bpm)、やや速いテンポ(Work 76bpm)、
-  運動的な速いテンポ(Move 112bpm)は覚醒度への影響が異なる（Gemini報告 §3.2、ChatGPT報告
-  「リズム・テンポの影響」）
+  運動的な速いテンポ(Move。当初112bpm → ADR-009 で 128bpm)は覚醒度への影響が異なる
+  （Gemini報告 §3.2、ChatGPT報告「リズム・テンポの影響」）
 - **音量ダイナミクス／リバーブ**: 集中系は小さく明瞭な空間、休憩系は大きく開放的な空間
   （ChatGPT報告「音量・SNRの影響」）
 
@@ -332,7 +349,8 @@ Relax と Sleep を全面的に再設計した。
    その後は睡眠をより深くするための音」を実装した。ただし文献の核心的な知見
    （後述）を踏まえ、「40分後に**別の音**へ切り替える」のではなく、**継続的な刺激から
    なめらかに遠ざかり、静寂に近づいていく**設計にした
-   （`packages/audio-engine/src/automation.ts` の `sleepAutomation` を参照）
+   （実際の値は `apps/web/public/packs.json` の `themes.sleep.automation` を参照。
+   ADR-011 以前は `packages/audio-engine/src/automation.ts` の `sleepAutomation` にもあった）
 3. **Home のフリー再生における実時間ベースの t 進行**（`apps/web/lib/soundscapeRuntime.ts`）:
    Sleep は一晩中つけっぱなしにする使い方が現実的なため、「最初40分」を実時間で成立させる
    必要がある。フリー再生は本来 t を固定して鳴らし続ける設計（`FREEPLAY_T = 0.45`）だが、
@@ -546,6 +564,64 @@ Endel の「状況（位置・時刻・天気）に応じてサウンドスケ�
 
 ---
 
+## ADR-011: 再生状態の所有者を1つに定め、オートメーション値を packs.json に一本化する
+
+### 決定
+
+1. **マスター段でユーザー音量とフェード包絡を別の `GainNode` に分ける。**
+   `masterGain`（フェード専用）→ `volumeGain`（ユーザー音量）→ リミッタ → 解析 → 出力。
+2. **「これから音を鳴らす」入口を `SoundscapeEngine.ensureRunning()` に集約する。**
+   `begin()` / `transitionTo()` / `resume()` は必ずこれを通り、AudioContext を running に
+   揃えてから鳴らす。`pause()` が予約した `suspend()` の取り消しもここで行う。
+3. **フリー再生の重複ガードは「実行中の Promise」で持つ。** テーマIDを覚える方式をやめる。
+4. **オートメーションの値は `apps/web/public/packs.json` だけに置く。**
+   `packages/audio-engine/src/automation.ts` は補間関数 `valueAt()` のみを持つ。
+
+### 理由
+
+**1 について**: `masterGain` が「ユーザー音量」と「フェード包絡」を兼ねていた。フェードに使う
+等パワーカーブは絶対値 0..1 なので、同じ `AudioParam` に流し込むと音量設定を上書きしてしまう。
+実測では音量 0.25 と 1.0 でレンダリング結果の RMS が完全に同一（＝音量バーが無効）だった。
+加えて Web Audio 仕様では `setValueCurveAtTime` の実行区間中に同じ `AudioParam` へ予約を
+入れると例外になるため、フェード中の音量操作も危険だった。`PhaseGraph` が
+`phaseMasterGain` と層別 gain を分けているのと同じ原則をマスター段にも適用しただけ。
+
+**2 について**: 自動再生ポリシーで suspended に落ちた context は放置され、
+`begin()`/`transitionTo()` が「成功」しても無音になる経路が残っていた（UIは再生中の表示のまま）。
+rev.6.2〜6.5 で呼び出し側のページを個別に直す試みを4回繰り返したが再発しており、
+**入口が複数ある限り個別修正では塞げない**と判断した。
+
+**3 について**: 直近のテーマIDを保持する方式は、成功時に解放されないと恒久的なガードになる。
+タイマー駆動の再生ループが `currentThemeIdRef` を裏で書き換えるため両者は容易に乖離し、
+「UI は Study を選択中と表示したまま relax が鳴り続ける」状態が起きていた。
+in-flight Promise なら `finally` で必ず解放されるので恒久化しえない。
+
+**4 について**: `automation.ts` は5テーマ分の値を「単体テスト用のミラー」として二重に持ち、
+「両方を同じ値に保つこと」と明記していたが、実際には Relax が乖離していた
+（pad / pulse / reverbWet の3系統）。実行時に読まれるのは `packs.json` 側なので、
+テストは**出荷されない方だけ**を検証していた。手で同期し続ける前提は成立しないと結論した。
+
+### 影響
+
+- `packages/audio-engine/src/engine.ts`: `volumeGain`・`suspendTimer`・`ensureRunning()` を追加
+- `packages/audio-engine/src/engine.offline.test.ts`（新規）: マスター段の回帰テスト
+- `packages/audio-engine/src/automation.ts`: 5定義と `automationFor()` を削除し `valueAt()` のみに
+- `packages/audio-engine/src/packs.test.ts`: `packs.json` のオートメーション曲線を直接検証
+- `apps/web/lib/soundscapeRuntime.ts`: ガードを in-flight Promise 化。失敗を呼び出し側へ伝播
+- `apps/web/components/TopNav.tsx`: Home クリックが計測中の Timer/Stopwatch の音を
+  止めていた不具合を修正（Timer/Stopwatch は計測中も `mode` が `"freeplay"` のままで、
+  `mode` だけを条件にすると巻き添えで停止し、しかも復帰する経路が無かった）
+
+### 却下した代替案
+
+- **`setMasterVolume()` の中でフェード予約を退避・再適用する**: 例外は避けられても、
+  「1つの AudioParam を2つの意味で共有する」構造は残る。ノードを分ける方が単純で安全。
+- **`automation.ts` 側を正として packs.json を生成する**: 実行時に `packs.json` を fetch する
+  構成（ADR-004 のデータ駆動）を変えることになり、影響が大きい。値の置き場所は
+  出荷物である `packs.json` に寄せる方が、検証対象と出荷物が一致して確実。
+
+---
+
 ## 併用する Web API
 
 | API | 用途 | Phase |
@@ -560,17 +636,17 @@ Endel の「状況（位置・時刻・天気）に応じてサウンドスケ�
 
 ## 技術スタック
 
-| 領域 | 採用 |
-|---|---|
-| フレームワーク | Next.js 15 (App Router, `output: 'export'`) |
-| 言語 | TypeScript（`strict: true`） |
-| 音声 | Web Audio API（素） |
-| 状態管理 | Zustand（軽量・クライアント専用でNext.jsと相性が良い） |
-| スタイル | Tailwind CSS |
-| 永続化 | IndexedDB（`idb` ラッパ）+ localStorage（設定） |
-| テスト | Vitest（+ `OfflineAudioContext` を使った音の検証） |
-| Lint / Format | ESLint + Prettier |
-| モノレポ | pnpm workspaces（`packages/` を切るため） |
+| 領域 | 採用 | 現状の実装 |
+|---|---|---|
+| フレームワーク | Next.js (App Router, `output: 'export'`) | Next.js 16 (Turbopack) |
+| 言語 | TypeScript（`strict: true`） | 同左 |
+| 音声 | Web Audio API（素） | 同左 |
+| 状態管理 | Zustand（軽量・クライアント専用でNext.jsと相性が良い） | 同左 |
+| スタイル | Tailwind CSS | Tailwind v4（`@tailwindcss/postcss`） |
+| 永続化 | localStorage | `zustand/middleware` の `persist`。当初案の IndexedDB（`idb`）は保存量が小さく不要だったため未採用 |
+| テスト | Vitest（+ `OfflineAudioContext` を使った音の検証） | `packages/core`・`packages/audio-engine` のみ。`apps/web` にテストは無い |
+| Lint / Format | ESLint | ESLint（`eslint-config-next`）。Prettier は未導入 |
+| モノレポ | pnpm workspaces（`packages/` を切るため） | 同左 |
 
 > Zustand を推す理由: このアプリの状態は「タイマー」と「設定」だけで、サーバ状態がない。
 > Redux は過剰、Context は再レンダリングの制御が面倒。異論があれば Jotai でも良い。
@@ -579,37 +655,52 @@ Endel の「状況（位置・時刻・天気）に応じてサウンドスケ�
 
 ## ディレクトリ構成
 
+実際の構成（`git ls-files` 準拠）:
+
 ```
 kairos/  (リポジトリルート)
-├─ CLAUDE.md
-├─ docs/                        # 本ドキュメント群 + ASSET_LICENSES.md
+├─ docs/                        # 本ドキュメント群 + ASSET_LICENSES.md + research/
+├─ scripts/
+│   └─ generate-placeholder-audio.mjs   # 合成音の仮素材生成（実音源は保護してスキップ）
 ├─ apps/
-│   └─ web/                     # Next.js アプリ
+│   └─ web/                     # Next.js アプリ（全ページ 'use client'）
 │       ├─ app/
 │       │   ├─ layout.tsx
-│       │   ├─ page.tsx         # タイマー画面
-│       │   ├─ settings/page.tsx
-│       │   └─ stats/page.tsx
+│       │   ├─ page.tsx             # Home（自由再生）
+│       │   ├─ pomodoro/page.tsx    # ポモドーロ
+│       │   ├─ timer/page.tsx       # 単発カウントダウン
+│       │   ├─ stopwatch/page.tsx   # ストップウォッチ
+│       │   └─ credit/page.tsx      # 説明・クレジット・参考文献
 │       ├─ components/
-│       ├─ hooks/               # useTimer, useSoundscape, useWakeLock
+│       ├─ hooks/               # useTimer, useCountdown, useStopwatch, useFreeplay, useSoundscape ほか
+│       ├─ lib/
+│       │   ├─ soundscapeRuntime.ts     # エンジンのシングルトンと再生状態
+│       │   ├─ environment.ts           # Geolocation + Open-Meteo（ADR-010）
+│       │   └─ visualStyles/            # 背景アート（Canvas2D）
 │       ├─ public/
-│       │   ├─ audio/           # ステム素材
+│       │   ├─ audio/           # ステム素材（テーマ別）
 │       │   ├─ ir/              # インパルス応答
-│       │   └─ packs.json
-│       └─ next.config.js
+│       │   └─ packs.json       # ★ テーマ定義とオートメーションの唯一の源（ADR-011）
+│       └─ next.config.ts
 └─ packages/
     ├─ core/                    # タイマー状態機械。純粋TS、依存ゼロ
-    │   └─ src/{preset,timer-state,transitions}.ts
+    │   └─ src/{preset,timer-state,transitions,countdown-state,stopwatch-state,clock}.ts
     └─ audio-engine/            # サウンドエンジン。Web Audio に対して書く純粋TS
-        └─ src/
-            ├─ engine.ts            # SoundscapeEngine
-            ├─ automation.ts        # PhaseAutomation（純粋関数）
-            ├─ cell-scheduler.ts    # 確率的スケジューラ（純粋関数 + PRNG）
-            ├─ loop-manager.ts      # クロスフェードループ
-            ├─ crossfader.ts        # フェーズ間移行
-            ├─ scheduler.worker.ts  # スロットリング回避ティッカー
-            └─ types.ts
+        ├─ src/
+        │   ├─ engine.ts            # SoundscapeEngine（マスター段・クロスフェード）
+        │   ├─ phase-graph.ts       # 1テーマ分のノードグラフ（層・フィルタ・リバーブ）
+        │   ├─ automation.ts        # valueAt()（キーフレーム補間）のみ
+        │   ├─ cell-scheduler.ts    # 確率的スケジューラ（純粋関数 + PRNG）
+        │   ├─ environment.ts       # 天気/時間帯/経過時間の補正（ADR-010）
+        │   ├─ scheduler.worker.ts  # スロットリング回避ティッカー
+        │   └─ types.ts
+        └─ tools/
+            └─ process-real-audio.mjs   # 実音源(Wikimedia)の加工記録
 ```
+
+> 初期の構成図にあった `loop-manager.ts` / `crossfader.ts` / `settings/` / `stats/` は
+> 実装されていない。ループのテイク切り替えは `phase-graph.ts` の Pad Ensemble（ADR-006）が、
+> フェーズ間移行は `engine.ts` の `transitionTo()` が担っている。
 
 ### 依存の方向
 ```
