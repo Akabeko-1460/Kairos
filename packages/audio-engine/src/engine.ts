@@ -10,6 +10,8 @@ import { IntervalTicker, WorkerTicker, type Ticker } from "./worker-ticker";
 const SCHEDULE_AHEAD_SEC = 2.0;
 /** フェーズ切替の既定クロスフェード秒数。 */
 const DEFAULT_CROSSFADE_SEC = 6;
+/** `AudioContext.resume()` の待機を打ち切るまでの時間（`ensureRunning` 参照）。 */
+const RESUME_TIMEOUT_MS = 1500;
 /** 移行の開始は Focus の t=1.0 到達時ではなく t≈0.985 から（docs/04_SOUND_ENGINE.md §6.4）。呼び出し側の目安値として公開。 */
 export const RECOMMENDED_TRANSITION_T = 0.985;
 
@@ -23,7 +25,14 @@ export interface SoundscapeEngineOptions {
 /** docs/04_SOUND_ENGINE.md §5 のインターフェースに準拠。 */
 export class SoundscapeEngine {
   private ctx: BaseAudioContext | null = null;
+  /**
+   * フェード専用のバス。begin/pause/resume/stop の等パワーカーブは**このノードだけ**を動かす。
+   * ユーザー音量は下流の volumeGain が持つ（両者を1つの AudioParam に相乗りさせると、
+   * 絶対値カーブであるフェードがユーザー音量を上書きしてしまう。docs/04_SOUND_ENGINE.md §2）。
+   */
   private masterGain: GainNode | null = null;
+  /** ユーザーが音量バーで決める音量。フェードとは独立した AudioParam でなければならない。 */
+  private volumeGain: GainNode | null = null;
   private limiter: Limiter | null = null;
   private analyser: AnalyserNode | null = null;
   private bufferLoader: BufferLoader | null = null;
@@ -35,6 +44,14 @@ export class SoundscapeEngine {
   private currentTheme: ThemeId | null = null;
   private lastT = 0;
   private disposeOutgoingTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * `pause()` がフェードアウト完了後に予約する `suspend()` のハンドル。
+   * フェード中に `resume()`／再生要求が来たら必ず取り消すこと。取り消さないと、再開した直後に
+   * 遅れて suspend が発火して「ゲインは戻っているのに無音」という復帰不能な状態になる。
+   */
+  private suspendTimer: ReturnType<typeof setTimeout> | null = null;
+  /** ユーザー音量の現在値。init() 前に setMasterVolume() されても失われないよう保持する。 */
+  private masterVolume = 1;
   /** getDebugInfo() が無駄な再描画を避けるために使う直近スナップショットのキャッシュ。 */
   private lastDebugInfo: {
     contextTime: number;
@@ -53,31 +70,20 @@ export class SoundscapeEngine {
       : new AudioContext();
     this.ctx = ctx;
 
-    if ("resume" in ctx) {
-      // 呼び出し元のジェスチャーがSPA遷移等で失われていた場合、resume() が長時間
-      // pending のまま解決しないブラウザがある。init() 自体をそれで止め続けると
-      // engineReady が永遠に true にならず、UIが「何をしても無反応」に見えてしまうため、
-      // 一定時間で見切りをつけて先へ進む（resume自体は裏で解決を試み続ける）。
-      await Promise.race([
-        (ctx as AudioContext).resume().catch(() => undefined),
-        new Promise<void>((resolve) => setTimeout(resolve, 1500)),
-      ]);
-      // まだ suspended のままなら、このページ上での次の実操作で確実に再開させる保険を張る。
-      // Chrome は自動再生ポリシー上この再開をブラウザ側で行うことがあるが、Firefox/Safari 等は
-      // resume() 呼び出し自体がジェスチャーのコールスタック内にあることを要求するため、
-      // アプリ側でも明示的に listener を張っておく。
-      if ((ctx as AudioContext).state !== "running") {
-        this.armGestureUnlock(ctx as AudioContext);
-      }
-    }
+    await this.ensureRunning();
 
     this.masterGain = ctx.createGain();
     this.masterGain.gain.value = 1;
+    this.volumeGain = ctx.createGain();
+    this.volumeGain.gain.value = this.masterVolume;
     this.limiter = createCompressorLimiter(ctx);
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 1024;
 
-    this.masterGain.connect(this.limiter.inputNode);
+    // フェード（masterGain）→ ユーザー音量（volumeGain）→ リミッタ → 解析 → 出力。
+    // 音量をリミッタより前に置くことで、絞ったときに不要な圧縮がかからない。
+    this.masterGain.connect(this.volumeGain);
+    this.volumeGain.connect(this.limiter.inputNode);
     this.limiter.outputNode.connect(this.analyser);
     this.analyser.connect(ctx.destination);
 
@@ -88,6 +94,56 @@ export class SoundscapeEngine {
         ? new IntervalTicker()
         : new WorkerTicker();
     this.ticker.start(() => this.serviceCellScheduling());
+  }
+
+  /**
+   * 「これから音を鳴らす」すべての入口で呼ぶ、AudioContext を running に揃えるための唯一のゲート。
+   *
+   * 自動再生ポリシーで suspended に落ちた context は、`begin()`/`transitionTo()` を呼んでも
+   * 自動的には戻らない。以前はここを通していなかったため、フェードもグラフ構築も成功した
+   * ように見えて実際には無音（UI は再生中の表示のまま）になる経路が残っていた。
+   *
+   * `pause()` が予約した `suspend()` もここで取り消す。取り消さないと、再開した直後に
+   * 遅れて suspend が発火して復帰不能になる。
+   *
+   * resume() が長時間 pending のまま解決しないブラウザがあるため、待機には見切り時間を設ける
+   * （呼び出し側を無期限に止めない。resume 自体は裏で解決を試み続ける）。
+   */
+  private async ensureRunning(): Promise<void> {
+    if (this.suspendTimer) {
+      clearTimeout(this.suspendTimer);
+      this.suspendTimer = null;
+    }
+    const ctx = this.ctx;
+    if (!ctx || !("resume" in ctx)) return;
+    const audioCtx = ctx as AudioContext;
+    // `state` は await をまたいで変化するライブな値なので、そのつど読み直す。
+    // プロパティを直接比較すると TypeScript が最初の判定で型を絞り込んでしまい、
+    // 後段の「まだ running でないか」の再確認が到達不能とみなされてしまう。
+    const readState = (): AudioContextState => audioCtx.state;
+    if (readState() === "running") return;
+
+    // resume() が先に解決しても見切り用タイマーは残り続けるので、必ず後始末する
+    // （放置すると 1.5秒間プロセス/タブにタイマーが積み上がる）。
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        audioCtx.resume().catch(() => undefined),
+        new Promise<void>((resolve) => {
+          timeoutId = setTimeout(resolve, RESUME_TIMEOUT_MS);
+        }),
+      ]);
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+    }
+
+    // まだ suspended のままなら、このページ上での次の実操作で確実に再開させる保険を張る。
+    // Chrome は自動再生ポリシー上この再開をブラウザ側で行うことがあるが、Firefox/Safari 等は
+    // resume() 呼び出し自体がジェスチャーのコールスタック内にあることを要求するため、
+    // アプリ側でも明示的に listener を張っておく。
+    if (readState() !== "running") {
+      this.armGestureUnlock(audioCtx);
+    }
   }
 
   /**
@@ -115,6 +171,7 @@ export class SoundscapeEngine {
   /** テーマ再生開始。seed で音の展開を決定的にする。前のテーマが無い最初の1回のみ使う想定。 */
   async begin(theme: ThemeId, seed: number): Promise<void> {
     this.assertReady();
+    await this.ensureRunning();
 
     if (this.currentGraph) {
       // 想定外の呼び出し順（例: Home のフリー再生中に Pomodoro を Start した等）でも
@@ -129,8 +186,9 @@ export class SoundscapeEngine {
     this.lastT = 0;
 
     const now = this.ctx!.currentTime;
-    // stop() 等でマスターゲインが下がったまま残っている可能性があるため、
-    // 現在値からのランプで安全に復元する（0起点の等パワーカーブだと段差が出るため使わない）。
+    // stop()/pause() でフェードバスが下がったまま残っている可能性があるため、現在値からの
+    // ランプで安全に復元する（0起点の等パワーカーブだと段差が出るため使わない）。
+    // ここで動かすのはフェードバスだけであり、ユーザー音量（volumeGain）には触れない。
     this.masterGain!.gain.cancelScheduledValues(now);
     this.masterGain!.gain.linearRampToValueAtTime(1, now + 0.6);
     // 最初の1回はクロスフェード相手がいないので、短いフェードインのみ。
@@ -152,6 +210,7 @@ export class SoundscapeEngine {
   /** 次テーマへ等パワークロスフェード。無音を挟まない。テーマ変更（例: Study→Work）にも使う。 */
   async transitionTo(next: ThemeId, seed: number, crossfadeSec = DEFAULT_CROSSFADE_SEC): Promise<void> {
     this.assertReady();
+    await this.ensureRunning();
     if (!this.currentGraph || !this.currentTheme) {
       await this.begin(next, seed);
       return;
@@ -189,15 +248,18 @@ export class SoundscapeEngine {
     this.masterGain.gain.cancelScheduledValues(now);
     this.masterGain.gain.setValueCurveAtTime(equalPowerCurve(false), now, fadeOutSec);
     if ("suspend" in this.ctx) {
-      setTimeout(() => void (this.ctx as AudioContext)?.suspend(), fadeOutSec * 1000);
+      // ハンドルを保持しておき、フェード中に resume()/再生要求が来たら ensureRunning() が取り消す。
+      if (this.suspendTimer) clearTimeout(this.suspendTimer);
+      this.suspendTimer = setTimeout(() => {
+        this.suspendTimer = null;
+        void (this.ctx as AudioContext)?.suspend();
+      }, fadeOutSec * 1000);
     }
   }
 
   async resume(fadeInSec = 0.4): Promise<void> {
     if (!this.ctx || !this.masterGain) return;
-    if ("resume" in this.ctx) {
-      await (this.ctx as AudioContext).resume();
-    }
+    await this.ensureRunning();
     const now = this.ctx.currentTime;
     this.masterGain.gain.cancelScheduledValues(now);
     this.masterGain.gain.setValueCurveAtTime(equalPowerCurve(true), now, fadeInSec);
@@ -205,6 +267,10 @@ export class SoundscapeEngine {
 
   async stop(fadeOutSec = 0.4): Promise<void> {
     if (!this.ctx || !this.masterGain) return;
+    if (this.suspendTimer) {
+      clearTimeout(this.suspendTimer);
+      this.suspendTimer = null;
+    }
     const now = this.ctx.currentTime;
     this.masterGain.gain.cancelScheduledValues(now);
     this.masterGain.gain.setValueCurveAtTime(equalPowerCurve(false), now, fadeOutSec);
@@ -224,9 +290,15 @@ export class SoundscapeEngine {
     }, fadeOutSec * 1000);
   }
 
+  /**
+   * ユーザー音量。フェード用の masterGain とは別ノードなので、フェードの実行中に呼んでも
+   * 予約が競合せず（Web Audio 仕様では setValueCurveAtTime 実行中の同一 AudioParam への
+   * 予約は例外になる）、フェードがユーザー音量を上書きすることもない。
+   */
   setMasterVolume(v: number): void {
-    if (!this.ctx || !this.masterGain) return;
-    this.masterGain.gain.linearRampToValueAtTime(Math.max(0, Math.min(1, v)), this.ctx.currentTime + 0.05);
+    this.masterVolume = Math.max(0, Math.min(1, v));
+    if (!this.ctx || !this.volumeGain) return; // init() 前でも値は保持し、init() 時に反映する
+    this.volumeGain.gain.linearRampToValueAtTime(this.masterVolume, this.ctx.currentTime + 0.05);
   }
 
   setLayerTrim(_role: LayerRole, _v: number): void {
@@ -283,11 +355,14 @@ export class SoundscapeEngine {
     this.ticker?.stop();
     this.ticker = null;
     if (this.disposeOutgoingTimer) clearTimeout(this.disposeOutgoingTimer);
+    if (this.suspendTimer) clearTimeout(this.suspendTimer);
+    this.suspendTimer = null;
     this.currentGraph?.dispose();
     this.outgoingGraph?.dispose();
     this.currentGraph = null;
     this.outgoingGraph = null;
     this.masterGain?.disconnect();
+    this.volumeGain?.disconnect();
     this.limiter?.dispose();
     this.analyser?.disconnect();
     if (this.ctx && "close" in this.ctx) {
