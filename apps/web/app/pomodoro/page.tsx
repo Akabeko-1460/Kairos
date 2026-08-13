@@ -181,6 +181,11 @@ export default function PomodoroPage() {
     if (!isIdle) switchToTimerMode();
   }, [isIdle, switchToTimerMode]);
 
+  // idle/completed（設定画面）は phaseDurationMs が 0 を返すため remainingMs も常に 0 になり、
+  // Preset を切り替えても表示が 00:00 のまま変わらず分かりにくかった。設定画面の間だけは
+  // 選択中 Preset の Focus 時間をそのまま表示する（実行中は従来通り残り時間を表示する）。
+  const timeLabel = isIdle ? formatMmSs(state.preset.focusMs) : formatMmSs(remainingMs(state, now));
+
   const focusTheme = FOCUS_SOUND_THEMES.find((t) => t.id === focusThemeId) ?? FOCUS_SOUND_THEMES[0]!;
   // Start・Preset・サイクルインジケーターの配色も選択中のサウンドテーマに合わせる。
   // 背景アートだけでなく、Focus フェーズを象徴する色そのものを差し替える。
@@ -294,7 +299,7 @@ export default function PomodoroPage() {
           <TimerRing
             progress={progress(state, now)}
             label={phaseLabel(state.phase)}
-            timeLabel={formatMmSs(remainingMs(state, now))}
+            timeLabel={timeLabel}
             accentColor={accent}
           />
 
