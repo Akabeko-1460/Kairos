@@ -1,12 +1,14 @@
 "use client";
 
 import {
+  cuePatternDurationSec,
   NEUTRAL_ENVIRONMENT,
   RECOMMENDED_TRANSITION_T,
   smoothEnvironment,
   SoundscapeEngine,
   targetEnvironmentModifier,
   timeOfDayFor,
+  type CuePattern,
   type EnvironmentModifier,
   type SoundPack,
   type ThemeId,
@@ -52,12 +54,32 @@ export type EngineDebugInfo = ReturnType<SoundscapeEngine["getDebugInfo"]>;
 export type CueKind = "phaseEnd" | "sessionEnd";
 
 /**
- * 終了通知音の強さ。Pomodoro は区切りを「軽く」知らせるだけ（集中の流れを断ち切らない）、
+ * 終了通知音の鳴らし方。Pomodoro は区切りを「軽く」知らせるだけ（集中の流れを断ち切らない）、
  * Timer は時間になったことを「しっかり」知らせる（席を外していても気づける）。
  */
-const POMODORO_PHASE_END_CUE = { gain: 0.45 } as const;
-const POMODORO_SESSION_END_CUE = { gain: 0.6, times: 2, intervalSec: 1.1 } as const;
-export const TIMER_FINISH_CUE = { gain: 1, times: 3, intervalSec: 0.9 } as const;
+const POMODORO_PHASE_END_CUE: CuePattern = { gain: 0.45 };
+const POMODORO_SESSION_END_CUE: CuePattern = { gain: 0.6, bursts: 2, burstIntervalSec: 1.1 };
+
+/**
+ * Timer の終了音。同じベル素材でも、余韻をそのまま鳴らすと Cell 層で流れている環境音のベルと
+ * 区別が付かない。**短く刻んだ「ピピピピッ」を一定間隔で4ループ**させることで、
+ * 音色ではなくリズムでアラームだと分かるようにしている。
+ */
+export const TIMER_FINISH_CUE: CuePattern = {
+  gain: 1,
+  beeps: 4,
+  beepIntervalSec: 0.17,
+  beepSec: 0.13,
+  bursts: 4,
+  burstIntervalSec: 1.3,
+};
+
+/**
+ * アラームの最後の一音のあと、他の音を戻すまでに置く余白（秒）。
+ * これが無いと、時間切れの直後（実測で約0.2秒後）に設定画面のプレビューがテーマを
+ * 鳴らし直してしまい、せっかくの「ピピピピッ」がアンビエントに埋もれて聞き分けられなくなる。
+ */
+const CUE_HOLD_TAIL_SEC = 0.6;
 
 /**
  * タイマーの現在フェーズと、ユーザーが選んだ Focus テーマから、鳴らすべきテーマを1つに決める
@@ -84,6 +106,13 @@ interface SoundscapeRuntimeStore {
   /** Pomodoro の Focus フェーズで鳴らす/描くサウンドテーマ。デフォルトは "Study"。 */
   focusThemeId: ThemeId;
   /**
+   * 連打するタイプの通知音（Timer の終了アラーム）が鳴っている間だけ true。
+   * 画面側はこれを見て、鳴り終わるまでアンビエントを戻さないようにする。
+   * 「今どんな音が鳴っているか」は再生状態そのものなので、画面のローカル state ではなく
+   * 再生状態の所有者であるこのランタイムが持つ（ADR-011）。
+   */
+  cueRinging: boolean;
+  /**
    * マスター音量。Home/Pomodoro どちらの音量バーからも同じ値を読み書きする
    * （エンジンはページを跨いだシングルトンなので、音量もページ間で共有するのが自然）。
    */
@@ -99,7 +128,7 @@ interface SoundscapeRuntimeStore {
   stopFreeplay: () => void;
   setMasterVolume: (v: number) => void;
   /** 終了通知音。テーマのフェードを経由しないので、音を止めるのと同時に呼んでも消えない。 */
-  playCue: (kind: CueKind, opts?: { gain?: number; times?: number; intervalSec?: number }) => void;
+  playCue: (kind: CueKind, opts?: CuePattern) => void;
 }
 
 // このモジュールを跨いだ再インポートでも二重初期化しないよう、状態はモジュールスコープに持つ。
@@ -124,6 +153,8 @@ let wasPaused = false;
 // Sleep のフリー再生専用の経過時間トラッカー（ADR-008）。playFreeplay("sleep") で 0 にリセットする。
 let freeplaySleepElapsedSec = 0;
 let freeplaySleepLastTickAtMs: number | null = null;
+/** 連打する通知音が鳴り終わるまでのタイマー（`cueRinging` を下ろす）。 */
+let cueHoldTimer: ReturnType<typeof setTimeout> | null = null;
 
 // --- 天気・時間帯・経過時間による環境モジュレーション（ADR-010） ---
 const WEATHER_REFRESH_INTERVAL_MS = 30 * 60 * 1000; // 30分ごとに再取得すれば十分（天気は数分単位では変わらない）
@@ -296,6 +327,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     freeplayThemeId: null,
     freeplayPlaying: false,
     focusThemeId: "study",
+    cueRinging: false,
     masterVolume: 0.8,
 
     ensureEngine: async () => {
@@ -420,6 +452,20 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     playCue: (kind, opts) => {
       // エンジン未初期化なら鳴らしようがないので黙って諦める（通知が出ないだけで実害はない）。
       void engine?.playCue(kind, opts).catch(logEngineError);
+
+      // 連打するパターンのときだけ「鳴っている」印を立てる。単発の合図（Pomodoro の区切り）は
+      // アンビエントに重なっても困らないので、待たせる必要がない。
+      const patternSec = cuePatternDurationSec(opts ?? {});
+      if (patternSec <= 0) return;
+      if (cueHoldTimer) clearTimeout(cueHoldTimer);
+      set({ cueRinging: true });
+      cueHoldTimer = setTimeout(
+        () => {
+          cueHoldTimer = null;
+          set({ cueRinging: false });
+        },
+        (patternSec + CUE_HOLD_TAIL_SEC) * 1000,
+      );
     },
   };
 });

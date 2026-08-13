@@ -13,6 +13,40 @@ const SCHEDULE_AHEAD_SEC = 2.0;
 const DEFAULT_CROSSFADE_SEC = 6;
 /** `AudioContext.resume()` の待機を打ち切るまでの時間（`ensureRunning` 参照）。 */
 const RESUME_TIMEOUT_MS = 1500;
+/** 通知音を短く切り上げるときのリリース長。ぶつ切りのクリックノイズを防ぐ最小限の値。 */
+const CUE_BEEP_RELEASE_SEC = 0.02;
+
+/**
+ * 通知音の鳴らし方。「`beeps` 個の連打（バースト）を `bursts` 回くり返す」という形で表す。
+ * 単発なら既定値のままでよい。
+ */
+export interface CuePattern {
+  gain?: number;
+  /** 1バースト内の音数。「ピピピピッ」なら4。 */
+  beeps?: number;
+  /** バースト内の音の間隔（秒）。連打として聞こえる程度に短くする。 */
+  beepIntervalSec?: number;
+  /** バーストのくり返し回数。 */
+  bursts?: number;
+  /** バーストの先頭同士の間隔（秒）。 */
+  burstIntervalSec?: number;
+  /** 1音の長さ（秒）。省略すると素材を最後まで鳴らす。指定すると短い「ピッ」になる。 */
+  beepSec?: number;
+}
+
+/**
+ * `CuePattern` を鳴らし切るのにかかる秒数。
+ * 呼び出し側が「アラームが終わるまで別の音を戻さない」といった判断に使えるよう、
+ * パターンの定義と同じ場所に置いてズレないようにする。
+ * `beepSec` 省略時は素材の長さが分からないので、最後の1音の長さは 0 として扱う
+ * （＝最後の音の鳴り始めまでの時間を返す）。
+ */
+export function cuePatternDurationSec(pattern: CuePattern): number {
+  const { beeps = 1, beepIntervalSec = 0.17, bursts = 1, burstIntervalSec = 1.3, beepSec = 0 } = pattern;
+  const lastBurstStart = (Math.max(1, bursts) - 1) * burstIntervalSec;
+  const lastBeepStart = (Math.max(1, beeps) - 1) * beepIntervalSec;
+  return lastBurstStart + lastBeepStart + beepSec;
+}
 /** 移行の開始は Focus の t=1.0 到達時ではなく t≈0.985 から（docs/04_SOUND_ENGINE.md §6.4）。呼び出し側の目安値として公開。 */
 export const RECOMMENDED_TRANSITION_T = 0.985;
 
@@ -310,14 +344,24 @@ export class SoundscapeEngine {
    * 肝心の通知音まで一緒に消えてしまう。通知は「鳴っている音の状態によらず必ず届く」ことが
    * 役割なので、音量設定にだけ従わせる。
    *
-   * `times` を2以上にすると `intervalSec` 間隔で繰り返す（サンプル精度でまとめて予約するので、
-   * メインスレッドが詰まってもリズムは崩れない）。
+   * 鳴らし方は「バースト（`beeps` 個の連打）を `bursts` 回くり返す」という形で指定する。
+   * 単発で鳴らしたいときは既定値（どちらも1）のままでよい。
+   *
+   * `beepSec` を指定すると1音をその長さで切り上げる。Cell 層で鳴っている環境音のベルと
+   * 同じ素材でも、短く刻めば「ピピピピッ」というアラームとして明確に区別できるようになる
+   * （素材の長い余韻をそのまま重ねると連打が滲んで、ただのベルの連続に聞こえてしまう）。
+   *
+   * すべてサンプル精度でまとめて予約するので、メインスレッドが詰まってもリズムは崩れない。
    */
-  async playCue(
-    kind: keyof SoundPack["cues"],
-    opts: { gain?: number; times?: number; intervalSec?: number } = {},
-  ): Promise<void> {
-    const { gain = 0.9, times = 1, intervalSec = 0.9 } = opts;
+  async playCue(kind: keyof SoundPack["cues"], opts: CuePattern = {}): Promise<void> {
+    const {
+      gain = 0.9,
+      beeps = 1,
+      beepIntervalSec = 0.17,
+      bursts = 1,
+      burstIntervalSec = 1.3,
+      beepSec,
+    } = opts;
     if (!this.ctx || !this.volumeGain || !this.bufferLoader || !this.pack) return;
     await this.ensureRunning();
     const url = this.pack.cues[kind];
@@ -328,18 +372,32 @@ export class SoundscapeEngine {
     const destination = this.volumeGain;
     if (!ctx || !destination) return;
 
+    const level = Math.max(0, Math.min(1, gain));
     const startAt = ctx.currentTime;
-    for (let i = 0; i < Math.max(1, times); i++) {
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      const cueGain = ctx.createGain();
-      cueGain.gain.value = Math.max(0, Math.min(1, gain));
-      source.connect(cueGain).connect(destination);
-      source.start(startAt + i * intervalSec);
-      source.onended = () => {
-        source.disconnect();
-        cueGain.disconnect();
-      };
+    for (let burst = 0; burst < Math.max(1, bursts); burst++) {
+      for (let beep = 0; beep < Math.max(1, beeps); beep++) {
+        const at = startAt + burst * burstIntervalSec + beep * beepIntervalSec;
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        const cueGain = ctx.createGain();
+        cueGain.gain.value = level;
+        source.connect(cueGain).connect(destination);
+        source.start(at);
+
+        if (beepSec !== undefined) {
+          // 切り上げる直前に短いリリースを入れて、ぶつ切りのクリックノイズを防ぐ。
+          const release = Math.min(CUE_BEEP_RELEASE_SEC, beepSec / 2);
+          cueGain.gain.setValueAtTime(level, at);
+          cueGain.gain.setValueAtTime(level, at + beepSec - release);
+          cueGain.gain.linearRampToValueAtTime(0, at + beepSec);
+          source.stop(at + beepSec);
+        }
+
+        source.onended = () => {
+          source.disconnect();
+          cueGain.disconnect();
+        };
+      }
     }
   }
 

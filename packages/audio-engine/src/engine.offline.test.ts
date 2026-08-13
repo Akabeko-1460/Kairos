@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { OfflineAudioContext } from "node-web-audio-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { rms } from "./analysis";
-import { SoundscapeEngine } from "./engine";
+import { cuePatternDurationSec, SoundscapeEngine } from "./engine";
 import type { PhaseAutomation, SoundPack, ThemeSoundDefinition } from "./types";
 
 /**
@@ -241,20 +241,69 @@ describe("SoundscapeEngine cue playback", () => {
     expect(rms(afterFade)).toBeGreaterThan(0.01);
   }, 30_000);
 
-  it("schedules repeats at the requested interval", async () => {
-    const ctx = controllableContext(4);
+  /**
+   * Timer の終了音は「ピピピピッ」を一定間隔でくり返すアラーム。同じベル素材を使っている
+   * Cell 層の環境音と混同されないよう、リズムそのものが識別の手がかりになる。
+   * 連打が滲まないこと（音と音の間にちゃんと隙間があること）まで確かめる。
+   */
+  it("plays a 4-beep burst four times, with clear gaps between bursts", async () => {
+    const beepIntervalSec = 0.17;
+    const beepSec = 0.13;
+    const burstIntervalSec = 1.3;
+    const ctx = controllableContext(6);
     const engine = await createEngine(ctx);
     engine.setMasterVolume(1);
-    await engine.playCue("sessionEnd", { gain: 0.9, times: 3, intervalSec: 1 });
+    await engine.playCue("sessionEnd", {
+      gain: 1,
+      beeps: 4,
+      beepIntervalSec,
+      beepSec,
+      bursts: 4,
+      burstIntervalSec,
+    });
 
     const data = await renderAndDispose(ctx, engine);
-    // 1秒ごとに3回鳴るので、各回の開始直後の窓はいずれも無音でない
-    for (const sec of [0, 1, 2]) {
+    const levelAt = (sec: number, windowSec: number) => {
       const from = Math.round(sec * SAMPLE_RATE);
-      const window = data.subarray(from, from + Math.round(0.2 * SAMPLE_RATE));
-      expect(rms(window), `${sec}秒地点で通知音が鳴っていない`).toBeGreaterThan(0.01);
+      return rms(data.subarray(from, from + Math.round(windowSec * SAMPLE_RATE)));
+    };
+
+    for (let burst = 0; burst < 4; burst++) {
+      const burstStart = burst * burstIntervalSec;
+      for (let beep = 0; beep < 4; beep++) {
+        const at = burstStart + beep * beepIntervalSec;
+        expect(levelAt(at + 0.01, 0.05), `${burst + 1}回目の${beep + 1}音目が鳴っていない`).toBeGreaterThan(0.01);
+      }
+      // 4音目が切り上がったあと、次のバーストまでは静か（連打が滲んでいない）
+      const gapStart = burstStart + 3 * beepIntervalSec + beepSec + 0.05;
+      expect(levelAt(gapStart, 0.2), `${burst + 1}回目のバーストの後に間が空いていない`).toBeLessThan(0.01);
     }
   }, 30_000);
+
+  it("cuts each beep short so the bell's long tail cannot smear the rhythm", async () => {
+    const ctx = controllableContext(3);
+    const engine = await createEngine(ctx);
+    engine.setMasterVolume(1);
+    // 素材（2秒のベル）をそのまま鳴らすと余韻が続くが、beepSec を指定すれば短く切れる
+    await engine.playCue("sessionEnd", { gain: 1, beepSec: 0.13 });
+
+    const data = await renderAndDispose(ctx, engine);
+    const from = Math.round(0.3 * SAMPLE_RATE);
+    expect(rms(data.subarray(from, from + Math.round(0.5 * SAMPLE_RATE)))).toBeLessThan(0.01);
+  }, 30_000);
+});
+
+describe("cuePatternDurationSec", () => {
+  it("covers the whole burst pattern so callers can hold other audio back", () => {
+    // 4連打 × 4ループ: 最後のバーストの開始(3×1.3) + 最後の一音の開始(3×0.17) + その音の長さ
+    expect(
+      cuePatternDurationSec({ beeps: 4, beepIntervalSec: 0.17, bursts: 4, burstIntervalSec: 1.3, beepSec: 0.13 }),
+    ).toBeCloseTo(3 * 1.3 + 3 * 0.17 + 0.13, 6);
+  });
+
+  it("is zero for a single full-length hit (the material length is unknown here)", () => {
+    expect(cuePatternDurationSec({})).toBe(0);
+  });
 });
 
 describe("SoundscapeEngine pause/resume lifecycle", () => {

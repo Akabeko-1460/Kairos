@@ -60,6 +60,7 @@ export default function TimerPage() {
     masterVolume,
     setMasterVolume,
     playCue,
+    cueRinging,
   } = useFreeplay();
   const setBackgroundArt = useBackgroundArtStore((s) => s.setConfig);
 
@@ -99,7 +100,7 @@ export default function TimerPage() {
       stopFreeplay();
       // playCue はテーマのフェードバスを通らないので、直前の stopFreeplay()（フェードアウト）に
       // 巻き込まれず鳴り続ける。Pomodoro の「軽い区切り」と違い、席を外していても気づけるよう
-      // 繰り返し鳴らす。
+      // 「ピピピピッ」を繰り返す。
       playCue("sessionEnd", TIMER_FINISH_CUE);
     }
   }, [running, state, now, syncToNow, stopFreeplay, playCue]);
@@ -110,7 +111,8 @@ export default function TimerPage() {
   // Timers メニューはクリック時点で先取り初期化もしているが、それに頼り切らずこの
   // 画面自身でも起動できるようにして、Home以外の経路で来ても必ず鳴るようにする。
   useEffect(() => {
-    if (!isIdle || isPreviewingSelected) return;
+    // アラームが鳴っている間は戻さない（上の effect の説明を参照）。
+    if (!isIdle || isPreviewingSelected || cueRinging) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -126,7 +128,7 @@ export default function TimerPage() {
     return () => {
       cancelled = true;
     };
-  }, [isIdle, selectedThemeId, ensureEngine, playFreeplay, isPreviewingSelected]);
+  }, [isIdle, selectedThemeId, ensureEngine, playFreeplay, isPreviewingSelected, cueRinging]);
 
   useEffect(() => {
     setBackgroundArt({
