@@ -10,7 +10,7 @@
     "test:watch": "vitest"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "vitest": "^3.0.0"
+    "typescript": "^6",
+    "vitest": "^4.0.0"
   }
 }

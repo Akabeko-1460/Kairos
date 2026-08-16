@@ -3,11 +3,11 @@ packages:
   - "packages/*"
 
 # create-next-app が apps/web に生成した設定をルートへ統合。
-# sharp / unrs-resolver はネイティブビルドを含み、承認なしのビルドスクリプト実行を避けるため無視する。
-ignoredBuiltDependencies:
-  - sharp
-  - unrs-resolver
-
-# esbuild (vitest 経由) はプラットフォーム用バイナリの取得に postinstall が必須なので明示的に許可する。
-onlyBuiltDependencies:
-  - esbuild
+# 依存パッケージの postinstall を実行してよいかの許可リスト
+# （pnpm 11 で onlyBuiltDependencies / ignoredBuiltDependencies が allowBuilds に統合された）。
+allowBuilds:
+  # vitest 経由。プラットフォーム用バイナリの取得に postinstall が必須。
+  esbuild: true
+  # ネイティブビルドを含むため、承認していないビルドスクリプトの実行を避ける。
+  sharp: false
+  unrs-resolver: false
