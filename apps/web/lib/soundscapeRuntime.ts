@@ -27,7 +27,7 @@ import { useTimerStore } from "@/hooks/useTimer";
 import { fetchWeatherCategory } from "@/lib/environment";
 
 const TICK_INTERVAL_MS = 100; // 10Hz。docs/03_ARCHITECTURE.md の useTimer -> SoundscapeEngine 結合点。
-const CROSSFADE_SEC = 6;
+const CROSSFADE_SEC = 3;
 /**
  * Home画面のフリー再生は特定のセッション長を持たないため、Sustain区間中央付近の t に固定して
  * 鳴らし続ける（docs/04_SOUND_ENGINE.md §4 の Ease-in/Sustain/Taper/Wind-down のうち Sustain のみを使う）。

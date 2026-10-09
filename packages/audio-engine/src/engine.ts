@@ -10,7 +10,7 @@ import { IntervalTicker, WorkerTicker, type Ticker } from "./worker-ticker";
 /** 常に2〜3秒先までイベントを予約しておく（docs/04_SOUND_ENGINE.md §6.1）。 */
 const SCHEDULE_AHEAD_SEC = 2.0;
 /** フェーズ切替の既定クロスフェード秒数。 */
-const DEFAULT_CROSSFADE_SEC = 6;
+const DEFAULT_CROSSFADE_SEC = 3;
 /** `AudioContext.resume()` の待機を打ち切るまでの時間（`ensureRunning` 参照）。 */
 const RESUME_TIMEOUT_MS = 1500;
 /**

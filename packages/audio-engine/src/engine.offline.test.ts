@@ -5,6 +5,8 @@ import { OfflineAudioContext } from "node-web-audio-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { rms } from "./analysis";
 import { cuePatternDurationSec, SoundscapeEngine } from "./engine";
+import { equalPowerCurve } from "./equal-power";
+import { PhaseGraph } from "./phase-graph";
 import type { PhaseAutomation, SoundPack, ThemeSoundDefinition } from "./types";
 
 /**
@@ -218,6 +220,46 @@ describe("SoundscapeEngine master volume", () => {
     // 跳ね上がりが起きていればここを大きく超える。
     expect(peakOf(data)).toBeLessThan(peakOf(fullScale) * 0.35);
   }, 30_000);
+});
+
+describe("SoundscapeEngine crossfade duration", () => {
+  it.each(["begin", "transitionTo"] as const)("%s schedules a 3s theme crossfade", async (entryPoint) => {
+    const ctx = controllableContext(4);
+    const engine = await createEngine(ctx);
+    const fadeSpy = vi.spyOn(PhaseGraph.prototype, "scheduleMasterFade");
+    try {
+      await engine.begin("study", 1);
+      fadeSpy.mockClear();
+
+      await engine[entryPoint]("work", 2);
+
+      expect(fadeSpy).toHaveBeenCalledTimes(2);
+      expect(fadeSpy).toHaveBeenCalledWith(equalPowerCurve(true), ctx.proxy.currentTime, 3);
+      expect(fadeSpy).toHaveBeenCalledWith(equalPowerCurve(false), ctx.proxy.currentTime, 3);
+    } finally {
+      fadeSpy.mockRestore();
+      await engine.dispose();
+    }
+  });
+
+  it("preserves an explicitly requested crossfade duration", async () => {
+    const ctx = controllableContext(4);
+    const engine = await createEngine(ctx);
+    const fadeSpy = vi.spyOn(PhaseGraph.prototype, "scheduleMasterFade");
+    try {
+      await engine.begin("study", 1);
+      fadeSpy.mockClear();
+
+      await engine.transitionTo("work", 2, 1.25);
+
+      expect(fadeSpy).toHaveBeenCalledTimes(2);
+      expect(fadeSpy).toHaveBeenCalledWith(equalPowerCurve(true), ctx.proxy.currentTime, 1.25);
+      expect(fadeSpy).toHaveBeenCalledWith(equalPowerCurve(false), ctx.proxy.currentTime, 1.25);
+    } finally {
+      fadeSpy.mockRestore();
+      await engine.dispose();
+    }
+  });
 });
 
 describe("SoundscapeEngine cue playback", () => {

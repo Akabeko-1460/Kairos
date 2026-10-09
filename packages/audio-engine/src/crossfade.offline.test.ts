@@ -36,7 +36,7 @@ function createNoiseBuffer(ctx: OfflineAudioContext, seed: number): AudioBuffer 
 }
 
 describe("Phase 0 スパイクA: OfflineAudioContext による実クロスフェード検証", () => {
-  it("crossfade region RMS stays within ±1.5dB of steady-state, and no clipping occurs", async () => {
+  it.each([3, CROSSFADE_SEC])("%ss crossfade RMS stays within ±1.5dB, with no clipping", async (crossfadeSec) => {
     const ctx = new OfflineAudioContext(1, DURATION_SEC * SAMPLE_RATE, SAMPLE_RATE);
 
     const outgoingBuffer = createNoiseBuffer(ctx, 1);
@@ -58,8 +58,8 @@ describe("Phase 0 スパイクA: OfflineAudioContext による実クロスフェ
     outgoingSource.start(0);
     incomingSource.start(0);
 
-    outgoingGain.gain.setValueCurveAtTime(equalPowerCurve(false), CROSSFADE_START_SEC, CROSSFADE_SEC);
-    incomingGain.gain.setValueCurveAtTime(equalPowerCurve(true), CROSSFADE_START_SEC, CROSSFADE_SEC);
+    outgoingGain.gain.setValueCurveAtTime(equalPowerCurve(false), CROSSFADE_START_SEC, crossfadeSec);
+    incomingGain.gain.setValueCurveAtTime(equalPowerCurve(true), CROSSFADE_START_SEC, crossfadeSec);
 
     const rendered = await ctx.startRendering();
     const data = rendered.getChannelData(0);
@@ -79,8 +79,9 @@ describe("Phase 0 スパイクA: OfflineAudioContext による実クロスフェ
     const referenceDb = toDb((steadyBefore + steadyAfter) / 2);
 
     // crossfade 区間内の複数点で RMS が基準から ±1.5dB 以内（谷ができていないこと）
-    const checkpoints = [1.5, 2.5, 3.5, 4.0, 4.5, 5.0, 5.5, 6.5, 7.5];
-    for (const sec of checkpoints) {
+    const progressCheckpoints = [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1];
+    for (const progress of progressCheckpoints) {
+      const sec = CROSSFADE_START_SEC + progress * crossfadeSec;
       const measuredDb = toDb(sampleAt(sec));
       expect(
         Math.abs(measuredDb - referenceDb),

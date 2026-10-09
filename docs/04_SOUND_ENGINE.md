@@ -26,7 +26,7 @@ Endel は「サウンドチームが事前にデザインした音素材を、�
         ├─ PhaseAutomation : 正規化時間 t(0→1) から各層の音量/密度/エフェクト量を決める
         ├─ CellScheduler   : シード付きPRNGで次のCell発火時刻・音程・定位を決める
         ├─ LoopManager     : ループの継ぎ目をクロスフェードで隠し、複数テイクを巡回させる
-        ├─ Crossfader      : フェーズ間を等パワーで6秒かけて繋ぐ
+        ├─ Crossfader      : フェーズ間を等パワーで3秒かけて繋ぐ
         └─ WorkerTicker    : バックグラウンドタブでも止まらない先読みスケジューリング
         ▼
   Web Audio ノードグラフ → destination
@@ -437,7 +437,7 @@ export interface SoundscapeEngine {
    */
   tick(t: number, environment?: EnvironmentModifier): void;
 
-  /** 次テーマへ等パワークロスフェード。無音を挟まない（フェーズ遷移にもテーマ変更にも使う）。 */
+  /** 次テーマへ等パワークロスフェード。既定値は3秒。無音を挟まない（フェーズ遷移にもテーマ変更にも使う）。 */
   transitionTo(next: ThemeId, seed: number, crossfadeSec?: number): Promise<void>;
 
   pause(fadeOutSec?: number): Promise<void>;
@@ -550,6 +550,9 @@ buffers.forEach((buffer, idx) => {
 
 ### 6.4 等パワークロスフェード
 
+Home、Timer、Stopwatchのテーマ変更、Pomodoroのテーマ変更・フェーズ移行、音の再生成は、すべて3秒で切り替える（PER-5）。
+`transitionTo()` の既定値も3秒とし、汎用APIでは別の切り替え時間を明示的に指定できる。
+
 **線形フェードは使わないこと。** 中間で音圧が落ち込んで「谷」ができます。
 
 ```ts
@@ -562,8 +565,8 @@ function equalPowerCurve(fadeIn: boolean, steps = 128): Float32Array {
   return curve;
 }
 
-outgoing.gain.setValueCurveAtTime(equalPowerCurve(false), ctx.currentTime, 6);
-incoming.gain.setValueCurveAtTime(equalPowerCurve(true),  ctx.currentTime, 6);
+outgoing.gain.setValueCurveAtTime(equalPowerCurve(false), ctx.currentTime, 3);
+incoming.gain.setValueCurveAtTime(equalPowerCurve(true),  ctx.currentTime, 3);
 ```
 
 > `setValueCurveAtTime` は、実行中に同じ AudioParam へ他の予約を入れると例外を投げます。
