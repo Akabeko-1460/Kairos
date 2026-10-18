@@ -6,6 +6,7 @@ import { RoundIndicator } from "@/components/RoundIndicator";
 import { TimerRing } from "@/components/TimerRing";
 import { VolumeSlider } from "@/components/VolumeSlider";
 import { useFreeplay } from "@/hooks/useFreeplay";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useMediaSession } from "@/hooks/useMediaSession";
 import { useNow } from "@/hooks/useNow";
@@ -247,6 +248,8 @@ export default function PomodoroPage() {
       setStarting(false);
     }
   };
+
+  useKeyboardShortcuts(handleStart);
 
   // リロード直後は @kairos/core のタイマー状態は復元されるが、AudioContext は復元できない
   // （自動再生ポリシー、ADR-003）。実行中セッションなのにエンジン未初期化のときはここで拾う。
