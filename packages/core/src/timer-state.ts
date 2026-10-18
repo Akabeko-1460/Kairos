@@ -36,12 +36,14 @@ export interface TimerState {
   readonly pausedAt: number | null;
   readonly currentRound: number; // 1-indexed
   readonly totalRounds: number;
+  readonly autoContinue: boolean;
   readonly taskHeadline: string;
   readonly sessionSeed: number; // 音の再現性のための乱数シード
 }
 
 export interface CreateIdleStateOptions {
   readonly totalRounds?: number;
+  readonly autoContinue?: boolean;
   readonly taskHeadline?: string;
   readonly sessionSeed?: number;
 }
@@ -59,9 +61,17 @@ export function createIdleState(
     pausedAt: null,
     currentRound: 1,
     totalRounds: opts.totalRounds ?? 4,
+    autoContinue: opts.autoContinue ?? true,
     taskHeadline: opts.taskHeadline ?? "",
     sessionSeed: opts.sessionSeed ?? now,
   };
+}
+
+/** 自動継続設定が保存されていない旧形式の状態を現行形式にする。 */
+export function normalizeTimerState(
+  raw: Omit<TimerState, "autoContinue"> & { readonly autoContinue?: boolean },
+): TimerState {
+  return { ...raw, autoContinue: raw.autoContinue ?? true };
 }
 
 export function phaseDurationMs(s: TimerState): number {
