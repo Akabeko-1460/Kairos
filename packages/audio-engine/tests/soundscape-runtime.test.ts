@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CLASSIC_PRESET, createIdleState, skip, start, type TimerState } from "../../core/src";
 import type { useSoundscapeRuntime } from "../../../apps/web/lib/soundscapeRuntime";
+import { createSoundPack } from "./fixtures/sound-pack";
 
 const timerStore = vi.hoisted(() => ({
   state: null as TimerState | null,
@@ -33,7 +34,7 @@ beforeEach(async () => {
   vi.spyOn(SoundscapeEngine.prototype, "tick").mockImplementation(() => {});
   vi.spyOn(SoundscapeEngine.prototype, "setMasterVolume").mockImplementation(() => {});
   vi.spyOn(SoundscapeEngine.prototype, "getDebugInfo").mockReturnValue(null);
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ json: async () => ({ packs: [{ id: "test" }] }) }));
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ json: async () => ({ packs: [createSoundPack()] }) }));
 
   runtime = (await import("../../../apps/web/lib/soundscapeRuntime")).useSoundscapeRuntime;
   await runtime.getState().ensureEngine();
@@ -81,5 +82,34 @@ describe("Web runtime crossfade duration", () => {
     runtime.getState().regenerateFreeplay();
 
     expect(transitionSpy).toHaveBeenCalledExactlyOnceWith("study", Date.now(), 3);
+  });
+});
+
+describe("Web runtime pack validation", () => {
+  it("propagates validation errors, resets playback, and allows retrying", async () => {
+    vi.resetModules();
+    const { SoundPackError, SoundscapeEngine } = await import("../src");
+    const loadPack = vi.spyOn(SoundscapeEngine.prototype, "loadPack").mockResolvedValue(undefined);
+    vi.spyOn(SoundscapeEngine.prototype, "init").mockResolvedValue(undefined);
+    vi.spyOn(SoundscapeEngine.prototype, "begin").mockResolvedValue(undefined);
+    vi.spyOn(SoundscapeEngine.prototype, "setMasterVolume").mockImplementation(() => {});
+    const logError = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(fetch).mockResolvedValueOnce({
+      json: async () => ({ packs: [{ id: "broken" }] }),
+    } as Response);
+    runtime = (await import("../../../apps/web/lib/soundscapeRuntime")).useSoundscapeRuntime;
+
+    const playback = runtime.getState().playFreeplay("study");
+    await expect(playback).rejects.toBeInstanceOf(SoundPackError);
+    await expect(playback).rejects.toThrow("packs[0].name");
+    expect(logError).toHaveBeenCalled();
+    expect(runtime.getState().engineReady).toBe(false);
+    expect(runtime.getState().freeplayPlaying).toBe(false);
+    expect(loadPack).not.toHaveBeenCalled();
+
+    await runtime.getState().playFreeplay("study");
+    expect(runtime.getState().engineReady).toBe(true);
+    expect(runtime.getState().freeplayPlaying).toBe(true);
+    expect(loadPack).toHaveBeenCalledExactlyOnceWith(createSoundPack());
   });
 });

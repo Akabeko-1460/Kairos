@@ -6,6 +6,7 @@ export type { CuePattern, SoundscapeEngineOptions } from "./engine";
 export * from "./environment";
 export * from "./equal-power";
 export * from "./limiter";
+export * from "./packs";
 export { PhaseGraph } from "./phase-graph";
 export * from "./prng";
 export * from "./pulse-loop";
