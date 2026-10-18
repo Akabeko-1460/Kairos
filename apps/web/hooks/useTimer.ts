@@ -13,13 +13,15 @@ import {
   setTotalRounds as setTotalRoundsTransition,
   skip as skipTransition,
   start as startTransition,
-  syncToNow as syncToNowTransition,
+  syncToNowSteps,
   systemClock,
   type PomodoroPreset,
   type TimerState,
 } from "@kairos/core";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { recordsForTransition } from "../lib/sessionRecords";
+import { addRecords } from "../lib/sessionRecordStore";
 
 interface TimerStore {
   state: TimerState;
@@ -46,17 +48,33 @@ export const useTimerStore = create<TimerStore>()(
       start: () => set({ state: startTransition(get().state, systemClock.now()) }),
       pause: () => set({ state: pauseTransition(get().state, systemClock.now()) }),
       resume: () => set({ state: resumeTransition(get().state, systemClock.now()) }),
-      skip: () => set({ state: skipTransition(get().state, systemClock.now()) }),
-      reset: () => set({ state: resetTransition(get().state, systemClock.now()) }),
+      skip: () => {
+        const now = systemClock.now();
+        const previous = get().state;
+        const next = skipTransition(previous, now);
+        set({ state: next });
+        void addRecords(recordsForTransition(previous, [next], now, "default"));
+      },
+      reset: () => {
+        const now = systemClock.now();
+        const previous = get().state;
+        const next = resetTransition(previous, now);
+        set({ state: next });
+        void addRecords(recordsForTransition(previous, [next], now, "default"));
+      },
       setTaskHeadline: (text) => set({ state: setTaskHeadlineTransition(get().state, text) }),
       changePreset: (preset) => set({ state: changePresetTransition(get().state, preset) }),
       setTotalRounds: (n) => set({ state: setTotalRoundsTransition(get().state, n) }),
       setAutoContinue: (value) => set({ state: setAutoContinueTransition(get().state, value) }),
-      syncToNow: () =>
-        set((s) => {
-          const next = syncToNowTransition(s.state, systemClock.now());
-          return next === s.state ? s : { state: next };
-        }),
+      syncToNow: () => {
+        const now = systemClock.now();
+        const previous = get().state;
+        const steps = syncToNowSteps(previous, now);
+        const next = steps.at(-1);
+        if (!next) return;
+        set({ state: next });
+        void addRecords(recordsForTransition(previous, steps, now, "default"));
+      },
     }),
     {
       name: "kairos-timer-state",

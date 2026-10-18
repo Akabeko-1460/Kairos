@@ -123,7 +123,8 @@ export function setTotalRounds(state: TimerState, totalRounds: number): TimerSta
  * 必要な回数だけ連続で advance する（複数フェーズをまたいで長時間放置されていた場合に対応）。
  * 自動継続が無効なら、次のフェーズの開始位置で一時停止する。
  */
-export function syncToNow(state: TimerState, now: number): TimerState {
+export function syncToNowSteps(state: TimerState, now: number): TimerState[] {
+  const steps: TimerState[] = [];
   let next = state;
   let guard = 0;
   while (
@@ -136,9 +137,18 @@ export function syncToNow(state: TimerState, now: number): TimerState {
     const overshootMs = now - next.phaseStartedAt - next.accumulatedPauseMs - phaseDurationMs(next);
     next = advance(next, now - overshootMs);
     if (!next.autoContinue && next.phaseStartedAt !== null) {
-      return pause(next, next.phaseStartedAt);
+      next = pause(next, next.phaseStartedAt);
+      steps.push(next);
+      break;
     }
+    steps.push(next);
     guard += 1;
   }
-  return next;
+  return steps;
+}
+
+/** 遷移がなければ入力をそのまま返す。 */
+export function syncToNow(state: TimerState, now: number): TimerState {
+  const steps = syncToNowSteps(state, now);
+  return steps.at(-1) ?? state;
 }
