@@ -25,6 +25,7 @@ import {
 import { create } from "zustand";
 import { useTimerStore } from "@/hooks/useTimer";
 import { fetchWeatherCategory } from "@/lib/environment";
+import { useSettingsStore } from "@/lib/settingsStore";
 
 const TICK_INTERVAL_MS = 100; // 10Hz。docs/03_ARCHITECTURE.md の useTimer -> SoundscapeEngine 結合点。
 const CROSSFADE_SEC = 3;
@@ -121,6 +122,7 @@ interface SoundscapeRuntimeStore {
    * （エンジンはページを跨いだシングルトンなので、音量もページ間で共有するのが自然）。
    */
   masterVolume: number;
+  muted: boolean;
 
   ensureEngine: () => Promise<SoundscapeEngine>;
   /** Pomodoro 画面が Start されたら呼ぶ。以後このループがタイマー駆動でエンジンを制御する。 */
@@ -131,6 +133,7 @@ interface SoundscapeRuntimeStore {
   regenerateFreeplay: () => void;
   stopFreeplay: () => void;
   setMasterVolume: (v: number) => void;
+  toggleMute: () => void;
   /** 終了通知音。テーマのフェードを経由しないので、音を止めるのと同時に呼んでも消えない。 */
   playCue: (kind: CueKind, opts?: CuePattern) => void;
 }
@@ -217,6 +220,10 @@ function tickEnvironment(): EnvironmentModifier {
 }
 
 export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) => {
+  function canPlayCue(): boolean {
+    return !get().muted && useSettingsStore.getState().cueEnabled;
+  }
+
   function startLoopOnce(): void {
     if (loopStarted) return;
     loopStarted = true;
@@ -232,7 +239,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
         const phaseBefore = useTimerStore.getState().state.phase;
         useTimerStore.getState().syncToNow();
         const state = useTimerStore.getState().state;
-        if (state.phase !== phaseBefore) {
+        if (state.phase !== phaseBefore && canPlayCue()) {
           const cue: CueKind = state.phase === "completed" ? "sessionEnd" : "phaseEnd";
           const opts = state.phase === "completed" ? POMODORO_SESSION_END_CUE : POMODORO_PHASE_END_CUE;
           void engine.playCue(cue, opts).catch(logEngineError);
@@ -333,6 +340,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     focusThemeId: "study",
     cueRinging: false,
     masterVolume: 0.8,
+    muted: false,
 
     ensureEngine: async () => {
       if (engine) return engine;
@@ -353,7 +361,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
           await created.loadPack(pack);
           // Start前・Pomodoro開始前に音量バーが操作されている場合があるので、
           // エンジン生成のタイミングでその時点のマスター音量を適用する。
-          created.setMasterVolume(get().masterVolume);
+          created.setMasterVolume(get().muted ? 0 : get().masterVolume);
           engine = created;
           set({ engineReady: true });
           startLoopOnce();
@@ -447,11 +455,18 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
     },
 
     setMasterVolume: (v) => {
-      set({ masterVolume: v });
+      set({ masterVolume: v, muted: false });
       engine?.setMasterVolume(v);
     },
 
+    toggleMute: () => {
+      const muted = !get().muted;
+      set({ muted });
+      engine?.setMasterVolume(muted ? 0 : get().masterVolume);
+    },
+
     playCue: (kind, opts) => {
+      if (!canPlayCue()) return;
       // エンジン未初期化なら鳴らしようがないので黙って諦める（通知が出ないだけで実害はない）。
       void engine?.playCue(kind, opts).catch(logEngineError);
 
