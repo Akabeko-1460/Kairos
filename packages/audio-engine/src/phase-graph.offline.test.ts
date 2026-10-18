@@ -1,9 +1,10 @@
 import { OfflineAudioContext } from "node-web-audio-api";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { hasClipping, rms } from "./analysis";
 import { BufferLoader } from "./buffer-loader";
 import { NEUTRAL_ENVIRONMENT } from "./environment";
 import { PhaseGraph } from "./phase-graph";
+import { mulberry32 } from "./prng";
 import type { PhaseAutomation, ThemeSoundDefinition } from "./types";
 
 /**
@@ -26,10 +27,12 @@ function makeSineBuffer(ctx: OfflineAudioContext, freqHz: number, seconds: numbe
 }
 
 function makeNoiseBuffer(ctx: OfflineAudioContext, seconds: number, peak = 0.5): AudioBuffer {
+  // 雨あり・なしの比較で、IRと雨の素材が毎回同じになるよう固定する。
+  const rng = mulberry32(42);
   const length = Math.round(seconds * SAMPLE_RATE);
   const buffer = ctx.createBuffer(1, length, SAMPLE_RATE);
   const data = buffer.getChannelData(0);
-  for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * peak;
+  for (let i = 0; i < length; i++) data[i] = (rng() * 2 - 1) * peak;
   return buffer;
 }
 
@@ -139,22 +142,27 @@ describe("PhaseGraph environment modulation (ADR-010)", () => {
 
     graph.scheduleMasterFade(new Float32Array([1, 1]), 0, 0.01);
     graph.tick(0.5, 0, { ...NEUTRAL_ENVIRONMENT, rainOverlayGain });
-    // rainOverlayGain > 0 のときだけ tick() が雨バッファの遅延ロードを起動する
-    // （A-4: 天候に関係なく毎テーマ無条件でロードしないための変更）。ロードは
-    // BufferLoader.load() の解決を待つ非同期処理なので、実際にノードが生えるまで
-    // マクロタスク境界を1つ挟んで待ってからレンダリングする。
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // 経過時間ではなく、tick() が起動した遅延ロードの完了を確認する。
+    if (rainOverlayGain > 0) {
+      await vi.waitFor(() => {
+        expect(graph.loadedUrls.has("/audio/relax/texture_rain.wav")).toBe(true);
+      });
+    }
 
     const rendered = await ctx.startRendering();
     graph.dispose();
-    return rendered.getChannelData(0);
+    // node-web-audio-api のチャンネル配列はネイティブの AudioBuffer を参照する。
+    // 元のバッファのGC後に次のレンダリングが領域を再利用しても比較値を保つ。
+    return rendered.getChannelData(0).slice();
   }
 
   it("raises the audible level when rainOverlayGain is turned up, without clipping", async () => {
-    const withoutRain = await renderWithEnvironment(0);
-    const withRain = await renderWithEnvironment(0.18); // clampModifier の上限に近い値
-    expect(hasClipping(withRain)).toBe(false);
-    expect(rms(withRain)).toBeGreaterThan(rms(withoutRain));
+    for (let iteration = 0; iteration < 10; iteration++) {
+      const withoutRain = await renderWithEnvironment(0);
+      const withRain = await renderWithEnvironment(0.18); // clampModifier の上限に近い値
+      expect(hasClipping(withRain), `iteration ${iteration + 1}`).toBe(false);
+      expect(rms(withRain), `iteration ${iteration + 1}`).toBeGreaterThan(rms(withoutRain));
+    }
   });
 
   it("defaults to NEUTRAL_ENVIRONMENT (no rain overlay) when tick() omits the argument", async () => {
