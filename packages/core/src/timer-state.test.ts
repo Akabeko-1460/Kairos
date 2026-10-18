@@ -6,6 +6,7 @@ import {
   isPaused,
   isPhaseComplete,
   isRunning,
+  normalizeTimerState,
   phaseDurationMs,
   progress,
   remainingMs,
@@ -15,6 +16,24 @@ import { pause, resume, start } from "./transitions";
 const T0 = 1_000_000;
 
 describe("timer-state", () => {
+  it("enables autoContinue by default and accepts an explicit setting", () => {
+    expect(createIdleState(CLASSIC_PRESET, T0).autoContinue).toBe(true);
+    expect(createIdleState(CLASSIC_PRESET, T0, { autoContinue: false }).autoContinue).toBe(false);
+  });
+
+  it("normalizes legacy state without changing its other fields", () => {
+    const state = start(createIdleState(CLASSIC_PRESET, T0), T0);
+    const { autoContinue, ...legacyState } = state;
+    expect(normalizeTimerState(legacyState)).toEqual({ ...legacyState, autoContinue: true });
+    expect(legacyState).not.toHaveProperty("autoContinue");
+    expect(autoContinue).toBe(true);
+  });
+
+  it.each([true, false])("preserves an explicit autoContinue=%s when normalizing", (autoContinue) => {
+    const state = createIdleState(CLASSIC_PRESET, T0, { autoContinue });
+    expect(normalizeTimerState(state)).toEqual(state);
+  });
+
   it("idle state has zero elapsed/remaining/progress", () => {
     const s = createIdleState(CLASSIC_PRESET, T0);
     expect(elapsedMs(s, T0)).toBe(0);

@@ -84,7 +84,7 @@ export function advance(state: TimerState, now: number): TimerState {
   };
 }
 
-/** UI 上は "スキップ" だが、遷移ロジックは自然完了と同じ。 */
+/** 手動スキップでは自動継続設定にかかわらず次のフェーズをすぐ開始する。 */
 export const skip = advance;
 
 export function reset(state: TimerState, now: number): TimerState {
@@ -103,6 +103,10 @@ export function setTaskHeadline(state: TimerState, taskHeadline: string): TimerS
   return { ...state, taskHeadline };
 }
 
+export function setAutoContinue(state: TimerState, autoContinue: boolean): TimerState {
+  return { ...state, autoContinue };
+}
+
 /** 停止中（idle/completed）のみプリセット切り替えを許可する。 */
 export function changePreset(state: TimerState, preset: TimerState["preset"]): TimerState {
   if (state.phase !== "idle" && state.phase !== "completed") return state;
@@ -117,6 +121,7 @@ export function setTotalRounds(state: TimerState, totalRounds: number): TimerSta
 /**
  * Page Visibility 復帰時などに呼ぶ。フェーズ長を超過していれば、超過分を正しく引き継ぎながら
  * 必要な回数だけ連続で advance する（複数フェーズをまたいで長時間放置されていた場合に対応）。
+ * 自動継続が無効なら、次のフェーズの開始位置で一時停止する。
  */
 export function syncToNow(state: TimerState, now: number): TimerState {
   let next = state;
@@ -130,6 +135,9 @@ export function syncToNow(state: TimerState, now: number): TimerState {
   ) {
     const overshootMs = now - next.phaseStartedAt - next.accumulatedPauseMs - phaseDurationMs(next);
     next = advance(next, now - overshootMs);
+    if (!next.autoContinue && next.phaseStartedAt !== null) {
+      return pause(next, next.phaseStartedAt);
+    }
     guard += 1;
   }
   return next;
