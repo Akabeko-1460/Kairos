@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CLASSIC_PRESET } from "./preset";
 import { createIdleState, isPaused, isRunning, remainingMs, type TimerState } from "./timer-state";
-import { advance, pause, reset, resume, setAutoContinue, skip, start, syncToNow } from "./transitions";
+import { advance, pause, reset, resume, setAutoContinue, skip, start, syncToNow, syncToNowSteps } from "./transitions";
 
 const T0 = 1_000_000;
 
@@ -20,6 +20,39 @@ function runFullCycle(totalRounds: number): TimerState["phase"][] {
 }
 
 describe("transitions", () => {
+  describe("syncToNowSteps", () => {
+    it("returns every transition at its actual boundary and agrees with syncToNow", () => {
+      const initial = start(createIdleState(CLASSIC_PRESET, T0, { totalRounds: 2 }), T0);
+      const firstEnd = T0 + CLASSIC_PRESET.focusMs;
+      const breakEnd = firstEnd + CLASSIC_PRESET.shortBreakMs;
+      const now = breakEnd + CLASSIC_PRESET.focusMs + 1000;
+      const steps = syncToNowSteps(initial, now);
+      expect(steps.map((state) => [state.phase, state.phaseStartedAt])).toEqual([
+        ["shortBreak", firstEnd], ["focus", breakEnd], ["completed", null],
+      ]);
+      expect(syncToNow(initial, now)).toEqual(steps.at(-1));
+      expect(initial.phase).toBe("focus");
+    });
+
+    it("returns no steps for idle, paused, completed, or not yet due states", () => {
+      const idle = createIdleState(CLASSIC_PRESET, T0, { totalRounds: 1 });
+      const running = start(idle, T0);
+      for (const state of [idle, running, pause(running, T0), advance(running, T0)]) {
+        expect(syncToNowSteps(state, T0 + 1)).toEqual([]);
+        expect(syncToNow(state, T0 + 1)).toBe(state);
+      }
+    });
+
+    it("includes the automatic pause in the only step when autoContinue is off", () => {
+      const initial = start(createIdleState(CLASSIC_PRESET, T0, { autoContinue: false }), T0);
+      const now = T0 + 24 * 60 * 60_000;
+      const steps = syncToNowSteps(initial, now);
+      expect(steps).toHaveLength(1);
+      expect(steps[0]).toMatchObject({ phase: "shortBreak", pausedAt: T0 + CLASSIC_PRESET.focusMs });
+      expect(syncToNow(initial, now)).toEqual(steps[0]);
+    });
+  });
+
   it("setAutoContinue changes only the setting without mutating the input", () => {
     const state = start(createIdleState(CLASSIC_PRESET, T0), T0);
     const disabled = setAutoContinue(state, false);
