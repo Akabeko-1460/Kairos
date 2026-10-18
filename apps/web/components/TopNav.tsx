@@ -11,7 +11,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 
 const TABS = [{ href: "/", label: "Home" }] as const;
-const TRAILING_TABS = [{ href: "/credit", label: "Credit" }] as const;
+const TRAILING_TABS = [
+  { href: "/settings", label: "Settings" },
+  { href: "/credit", label: "Credit" },
+] as const;
 
 // Pomodoro / Timer(普通のカウントダウン) / Stopwatch をまとめる新しいナビ項目。
 // 「Timers」ボタンを押すと3択の梯子状メニュー（TimerToolsMenu）がオーバーレイ表示される。
