@@ -9,6 +9,7 @@ const buttonClass =
   "hover:text-foreground focus-visible:outline-2 focus-visible:outline-focus-accent";
 const selectedClass = "border-focus-accent bg-focus-accent/10 text-foreground";
 const themes = [["dark", "ダーク"], ["light", "ライト"]] as const;
+const layers = [["pad", "Pad"], ["texture", "自然音"], ["pulse", "パルス"], ["cell", "粒"]] as const;
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -77,6 +78,30 @@ export default function SettingsPage() {
         </Section>
         <Section title="SOUND">
           <Toggle label="合図音" enabled={settings.cueEnabled} onChange={settings.setCueEnabled} />
+        </Section>
+        <Section title="レイヤー">
+          {layers.map(([role, label]) => (
+            <div key={role} className="flex flex-col gap-3">
+              <Toggle
+                label={label}
+                enabled={settings.layerTrims[role] > 0}
+                onChange={(enabled) => settings.setLayerTrim(role, enabled ? 1 : 0)}
+              />
+              <label className="flex items-center gap-3 text-xs text-muted">
+                <span className="sr-only">{label}の音量</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={settings.layerTrims[role]}
+                  onChange={(event) => settings.setLayerTrim(role, Number(event.target.value))}
+                  className="w-full accent-focus-accent"
+                />
+                <span className="min-w-10 text-right">{Math.round(settings.layerTrims[role] * 100)}%</span>
+              </label>
+            </div>
+          ))}
         </Section>
         <Section title="GENERAL">
           <Toggle label="通知" enabled={settings.notificationsEnabled} onChange={settings.setNotificationsEnabled} />

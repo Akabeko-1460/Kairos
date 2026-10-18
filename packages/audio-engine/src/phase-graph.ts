@@ -4,7 +4,7 @@ import { CellScheduler } from "./cell-scheduler";
 import { ENVIRONMENT_GAIN_FIELD, NEUTRAL_ENVIRONMENT, type EnvironmentModifier } from "./environment";
 import { mulberry32 } from "./prng";
 import { scaleSemitones } from "./scales";
-import type { LayerSpec, PhaseAutomation, ThemeSoundDefinition } from "./types";
+import type { LayerRole, LayerSpec, PhaseAutomation, ThemeSoundDefinition } from "./types";
 
 const LOOP_CROSSFADE_TAIL_SEC = 0; // Phase 2 で LoopManager のテイクローテーションと合わせて拡張する
 const DETUNE_RANGE = 0.006; // ±0.3%
@@ -58,6 +58,9 @@ export class PhaseGraph {
   private readonly ctx: BaseAudioContext;
   private readonly bufferLoader: BufferLoader;
   private readonly layerGains = new Map<string, GainNode>();
+  private readonly layerTrims = { pad: 1, texture: 1, pulse: 1, cell: 1 };
+  private readonly cellGain: GainNode;
+  private lastT = 0;
   private readonly sources: AudioBufferSourceNode[] = [];
   private readonly lfoOscillators: OscillatorNode[] = [];
   private readonly auxNodes: AudioNode[] = []; // LFO用の中間 GainNode 等。dispose でまとめて切断する。
@@ -91,6 +94,9 @@ export class PhaseGraph {
 
     this.mixBus = params.ctx.createGain();
     this.mixBus.gain.value = 1;
+    // 先読み予約済み・再生中のワンショットにも音量変更を反映する。
+    this.cellGain = params.ctx.createGain();
+    this.cellGain.connect(this.mixBus);
 
     this.filterNode = params.ctx.createBiquadFilter();
     this.filterNode.type = "lowpass";
@@ -295,7 +301,7 @@ export class PhaseGraph {
         // 直近の目標値（this.currentEnvironment、tick() 冒頭で毎回更新している）を
         // 即座に反映し、体感の遅延をなくす。
         if (this.envRainGain) {
-          this.envRainGain.gain.value = Math.max(0, this.currentEnvironment.rainOverlayGain);
+          this.envRainGain.gain.value = Math.max(0, this.currentEnvironment.rainOverlayGain) * this.layerTrims.texture;
         }
       })
       .catch(() => {
@@ -306,6 +312,7 @@ export class PhaseGraph {
   /** useTimer から約10Hzで呼ばれる。t は 0.0–1.0。environment は天気/時間帯/経過時間による補正（ADR-010、省略時は無補正）。 */
   tick(t: number, now: number, environment: EnvironmentModifier = NEUTRAL_ENVIRONMENT): void {
     if (this.disposed) return;
+    this.lastT = t;
     this.currentEnvironment = environment;
     const RAMP_SEC = 0.15; // 短いランプでジッパーノイズを防ぐ（10Hz呼び出しに対して十分短い）
     const target = now + RAMP_SEC;
@@ -322,7 +329,7 @@ export class PhaseGraph {
       const gainNode = this.layerGains.get(role);
       if (!gainNode) continue;
       const value = valueAt(this.automation[role], t) * environment[ENVIRONMENT_GAIN_FIELD[role]];
-      gainNode.gain.linearRampToValueAtTime(Math.max(0, value), target);
+      gainNode.gain.setTargetAtTime(Math.max(0, value) * this.layerTrims[role], now, 0.1);
     }
 
     this.filterNode.frequency.linearRampToValueAtTime(
@@ -333,7 +340,19 @@ export class PhaseGraph {
       Math.max(0, valueAt(this.automation.reverbWet, t) + environment.reverbWetDelta),
       target,
     );
-    this.envRainGain?.gain.linearRampToValueAtTime(Math.max(0, environment.rainOverlayGain), target);
+    this.envRainGain?.gain.setTargetAtTime(
+      Math.max(0, environment.rainOverlayGain) * this.layerTrims.texture, now, 0.1,
+    );
+  }
+
+  setLayerTrim(role: LayerRole, value: number): void {
+    if (this.disposed || role === "cue" || Number.isNaN(value)) return;
+    this.layerTrims[role] = Math.min(1, Math.max(0, value));
+    if (role === "cell") {
+      this.cellGain.gain.setTargetAtTime(this.layerTrims.cell, this.ctx.currentTime, 0.1);
+      return;
+    }
+    this.tick(this.lastT, this.ctx.currentTime, this.currentEnvironment);
   }
 
   currentCellDensity(t: number): number {
@@ -357,9 +376,9 @@ export class PhaseGraph {
     if ("createStereoPanner" in this.ctx) {
       const panner = this.ctx.createStereoPanner();
       panner.pan.value = event.pan;
-      source.connect(gain).connect(panner).connect(this.mixBus);
+      source.connect(gain).connect(panner).connect(this.cellGain);
     } else {
-      source.connect(gain).connect(this.mixBus);
+      source.connect(gain).connect(this.cellGain);
     }
 
     source.start(when);
@@ -408,6 +427,7 @@ export class PhaseGraph {
     this.envRainGain = null;
     this.layerGains.forEach((g) => g.disconnect());
     this.layerGains.clear();
+    this.cellGain.disconnect();
     this.mixBus.disconnect();
     this.filterNode.disconnect();
     this.dryGain.disconnect();

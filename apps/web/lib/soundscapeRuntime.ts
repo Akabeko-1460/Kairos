@@ -140,6 +140,17 @@ interface SoundscapeRuntimeStore {
 
 // このモジュールを跨いだ再インポートでも二重初期化しないよう、状態はモジュールスコープに持つ。
 let engine: SoundscapeEngine | null = null;
+
+function applyLayerTrims(target: SoundscapeEngine): void {
+  const trims = useSettingsStore.getState().layerTrims;
+  for (const role of ["pad", "texture", "pulse", "cell"] as const) {
+    target.setLayerTrim(role, trims[role]);
+  }
+}
+
+useSettingsStore.subscribe((state, previous) => {
+  if (engine && state.layerTrims !== previous.layerTrims) applyLayerTrims(engine);
+});
 // ensureEngine() の呼び出しが重なった際に AudioContext / SoundscapeEngine を複数生成しない
 // ようにする in-flight Promise キャッシュ（下記 ensureEngine 参照）。
 let engineInitPromise: Promise<SoundscapeEngine> | null = null;
@@ -362,6 +373,7 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
           // Start前・Pomodoro開始前に音量バーが操作されている場合があるので、
           // エンジン生成のタイミングでその時点のマスター音量を適用する。
           created.setMasterVolume(get().muted ? 0 : get().masterVolume);
+          applyLayerTrims(created);
           engine = created;
           set({ engineReady: true });
           startLoopOnce();

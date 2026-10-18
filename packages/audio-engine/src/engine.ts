@@ -94,6 +94,7 @@ export class SoundscapeEngine {
   private suspendTimer: ReturnType<typeof setTimeout> | null = null;
   /** ユーザー音量の現在値。init() 前に setMasterVolume() されても失われないよう保持する。 */
   private masterVolume = 1;
+  private readonly layerTrims = { pad: 1, texture: 1, pulse: 1, cell: 1 };
   /** getDebugInfo() が無駄な再描画を避けるために使う直近スナップショットのキャッシュ。 */
   private lastDebugInfo: {
     contextTime: number;
@@ -410,8 +411,12 @@ export class SoundscapeEngine {
     }
   }
 
-  setLayerTrim(_role: LayerRole, _v: number): void {
-    // Phase 3 (F-22) で実装。現状は SoundscapeEngine インターフェースの形だけ用意する。
+  setLayerTrim(role: LayerRole, v: number): void {
+    if (role === "cue" || Number.isNaN(v)) return;
+    const trim = Math.min(1, Math.max(0, v));
+    this.layerTrims[role] = trim;
+    this.currentGraph?.setLayerTrim(role, trim);
+    this.outgoingGraph?.setLayerTrim(role, trim);
   }
 
   getFrequencyData(out: Uint8Array<ArrayBuffer>): void {
@@ -500,7 +505,7 @@ export class SoundscapeEngine {
     if (!themeDef) {
       throw new Error(`SoundPack "${pack.id}" has no definition for theme "${theme}".`);
     }
-    return PhaseGraph.create({
+    const graph = await PhaseGraph.create({
       ctx,
       bufferLoader: this.bufferLoader!,
       themeDef,
@@ -508,6 +513,10 @@ export class SoundscapeEngine {
       startAt: ctx.currentTime,
       output: this.masterGain!,
     });
+    for (const role of ["pad", "texture", "pulse", "cell"] as const) {
+      graph.setLayerTrim(role, this.layerTrims[role]);
+    }
+    return graph;
   }
 
   /**
