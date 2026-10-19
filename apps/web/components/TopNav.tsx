@@ -12,7 +12,6 @@ import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "re
 
 const TABS = [{ href: "/", label: "Home" }] as const;
 const TRAILING_TABS = [
-  { href: "/stats", label: "Stats" },
   { href: "/settings", label: "Settings" },
   { href: "/credit", label: "Credit" },
 ] as const;
@@ -155,7 +154,7 @@ export function TopNav() {
   return (
     <>
       <header className="flex w-full items-center justify-center px-8 pb-4 pt-8">
-        <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+        <nav className="flex items-center gap-6">
           {TABS.map((tab) => (
             <NavLink
               key={tab.href}
