@@ -4,11 +4,9 @@ import {
   changePreset as changePresetTransition,
   CLASSIC_PRESET,
   createIdleState,
-  normalizeTimerState,
   pause as pauseTransition,
   reset as resetTransition,
   resume as resumeTransition,
-  setAutoContinue as setAutoContinueTransition,
   setTaskHeadline as setTaskHeadlineTransition,
   setTotalRounds as setTotalRoundsTransition,
   skip as skipTransition,
@@ -31,7 +29,6 @@ interface TimerStore {
   setTaskHeadline: (text: string) => void;
   changePreset: (preset: PomodoroPreset) => void;
   setTotalRounds: (n: number) => void;
-  setAutoContinue: (value: boolean) => void;
   syncToNow: () => void;
 }
 
@@ -51,22 +48,12 @@ export const useTimerStore = create<TimerStore>()(
       setTaskHeadline: (text) => set({ state: setTaskHeadlineTransition(get().state, text) }),
       changePreset: (preset) => set({ state: changePresetTransition(get().state, preset) }),
       setTotalRounds: (n) => set({ state: setTotalRoundsTransition(get().state, n) }),
-      setAutoContinue: (value) => set({ state: setAutoContinueTransition(get().state, value) }),
       syncToNow: () =>
         set((s) => {
           const next = syncToNowTransition(s.state, systemClock.now());
           return next === s.state ? s : { state: next };
         }),
     }),
-    {
-      name: "kairos-timer-state",
-      merge: (persistedState, currentState) => {
-        const persisted = persistedState as Partial<Pick<TimerStore, "state">> | undefined;
-        return {
-          ...currentState,
-          state: persisted?.state ? normalizeTimerState(persisted.state) : currentState.state,
-        };
-      },
-    },
+    { name: "kairos-timer-state" },
   ),
 );

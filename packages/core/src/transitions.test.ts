@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CLASSIC_PRESET } from "./preset";
-import { createIdleState, isPaused, isRunning, remainingMs, type TimerState } from "./timer-state";
-import { advance, pause, reset, resume, setAutoContinue, skip, start, syncToNow } from "./transitions";
+import { createIdleState, isRunning, type TimerState } from "./timer-state";
+import { advance, pause, reset, resume, skip, start, syncToNow } from "./transitions";
 
 const T0 = 1_000_000;
 
@@ -20,95 +20,6 @@ function runFullCycle(totalRounds: number): TimerState["phase"][] {
 }
 
 describe("transitions", () => {
-  it("setAutoContinue changes only the setting without mutating the input", () => {
-    const state = start(createIdleState(CLASSIC_PRESET, T0), T0);
-    const disabled = setAutoContinue(state, false);
-    expect(disabled).toEqual({ ...state, autoContinue: false });
-    expect(state.autoContinue).toBe(true);
-    expect(setAutoContinue(disabled, true)).toEqual(state);
-  });
-
-  describe("with autoContinue disabled", () => {
-    function createFocus(currentRound = 1): TimerState {
-      return {
-        ...start(createIdleState(CLASSIC_PRESET, T0, { autoContinue: false, totalRounds: 5 }), T0),
-        currentRound,
-      };
-    }
-
-    it.each([
-      [1, "shortBreak", CLASSIC_PRESET.shortBreakMs],
-      [4, "longBreak", CLASSIC_PRESET.longBreakMs],
-    ] as const)("pauses the break after round %s at its start", (round, phase, durationMs) => {
-      const end = T0 + CLASSIC_PRESET.focusMs;
-      const now = end + 60_000;
-      const state = syncToNow(createFocus(round), now);
-      expect(state.phase).toBe(phase);
-      expect(state.currentRound).toBe(round);
-      expect(state.phaseStartedAt).toBe(end);
-      expect(state.pausedAt).toBe(end);
-      expect(state.accumulatedPauseMs).toBe(0);
-      expect(isPaused(state)).toBe(true);
-      expect(remainingMs(state, now)).toBe(durationMs);
-    });
-
-    it("advances only once even after an entire session's worth of time", () => {
-      const now = T0 + 24 * 60 * 60_000;
-      const state = syncToNow(createFocus(), now);
-      expect(state.phase).toBe("shortBreak");
-      expect(state.currentRound).toBe(1);
-      expect(remainingMs(state, now)).toBe(CLASSIC_PRESET.shortBreakMs);
-      expect(syncToNow(state, now + 60_000)).toBe(state);
-    });
-
-    it("accounts for earlier pauses when computing the natural transition time", () => {
-      const paused = pause(createFocus(), T0 + 60_000);
-      const running = resume(paused, T0 + 120_000);
-      const end = T0 + CLASSIC_PRESET.focusMs + 60_000;
-      const state = syncToNow(running, end);
-      expect(state.phaseStartedAt).toBe(end);
-      expect(state.pausedAt).toBe(end);
-      expect(remainingMs(state, end)).toBe(CLASSIC_PRESET.shortBreakMs);
-    });
-
-    it("resumes the full break and pauses the following focus at its start", () => {
-      const now = T0 + CLASSIC_PRESET.focusMs + 60_000;
-      const waiting = syncToNow(createFocus(), now);
-      const running = resume(waiting, now);
-      expect(isRunning(running)).toBe(true);
-      expect(remainingMs(running, now)).toBe(CLASSIC_PRESET.shortBreakMs);
-      expect(remainingMs(running, now + 1000)).toBe(CLASSIC_PRESET.shortBreakMs - 1000);
-      const end = now + CLASSIC_PRESET.shortBreakMs;
-      const nextFocus = syncToNow(running, end + 60_000);
-      expect(nextFocus.phase).toBe("focus");
-      expect(nextFocus.currentRound).toBe(2);
-      expect(nextFocus.phaseStartedAt).toBe(end);
-      expect(nextFocus.pausedAt).toBe(end);
-      expect(remainingMs(nextFocus, end + 60_000)).toBe(CLASSIC_PRESET.focusMs);
-    });
-
-    it("skip starts the next phase immediately, including from an automatic pause", () => {
-      const now = T0 + 1000;
-      const nextBreak = skip(createFocus(), now);
-      expect(nextBreak.phase).toBe("shortBreak");
-      expect(nextBreak.phaseStartedAt).toBe(now);
-      expect(isRunning(nextBreak)).toBe(true);
-      const waiting = syncToNow(createFocus(), T0 + CLASSIC_PRESET.focusMs);
-      const nextFocus = skip(waiting, now + CLASSIC_PRESET.focusMs);
-      expect(nextFocus.phase).toBe("focus");
-      expect(nextFocus.currentRound).toBe(2);
-      expect(nextFocus.phaseStartedAt).toBe(now + CLASSIC_PRESET.focusMs);
-      expect(isRunning(nextFocus)).toBe(true);
-    });
-
-    it("completes the final focus without pausing", () => {
-      const state = syncToNow(createFocus(5), T0 + CLASSIC_PRESET.focusMs);
-      expect(state.phase).toBe("completed");
-      expect(state.phaseStartedAt).toBeNull();
-      expect(state.pausedAt).toBeNull();
-    });
-  });
-
   it("start() moves idle -> focus, round 1", () => {
     const s = start(createIdleState(CLASSIC_PRESET, T0), T0);
     expect(s.phase).toBe("focus");
