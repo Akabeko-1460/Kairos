@@ -1,7 +1,6 @@
 import { BackgroundArt } from "@/components/BackgroundArt";
 import { PageTransition } from "@/components/PageTransition";
 import { TopNav } from "@/components/TopNav";
-import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
@@ -33,7 +32,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <ServiceWorkerRegistrar />
         {/* ヘッダーとページ本体、どちらの裏側にも回り込む唯一の背景アート。境界を作らない。 */}
         <BackgroundArt />
         <div className="relative z-10 flex min-h-full flex-1 flex-col">
