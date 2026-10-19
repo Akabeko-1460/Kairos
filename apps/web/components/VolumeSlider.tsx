@@ -1,8 +1,6 @@
 "use client";
 
-import { useSoundscapeRuntime } from "@/lib/soundscapeRuntime";
-
-function VolumeIcon({ muted }: { muted: boolean }) {
+function VolumeIcon() {
   return (
     <svg
       width={16}
@@ -13,10 +11,9 @@ function VolumeIcon({ muted }: { muted: boolean }) {
       strokeWidth={1.4}
       strokeLinecap="round"
       strokeLinejoin="round"
-      aria-hidden="true"
     >
       <path d="M4 10v4h4l5 4V6l-5 4H4Z" />
-      {muted ? <path d="m17 9 5 6m0-6-5 6" /> : <path d="M16.5 9a4 4 0 0 1 0 6" />}
+      <path d="M16.5 9a4 4 0 0 1 0 6" />
     </svg>
   );
 }
@@ -34,20 +31,11 @@ interface VolumeSliderProps {
  * どちらの画面でも同じマスター音量（lib/soundscapeRuntime.ts）を操作する。
  */
 export function VolumeSlider({ value, onChange, accentColor, className }: VolumeSliderProps) {
-  const muted = useSoundscapeRuntime((state) => state.muted);
-  const toggleMute = useSoundscapeRuntime((state) => state.toggleMute);
-
   return (
     <div className={`flex items-center gap-2 ${className ?? ""}`}>
-      <button
-        type="button"
-        aria-pressed={muted}
-        aria-label={muted ? "ミュートを解除" : "ミュート"}
-        onClick={toggleMute}
-        className="shrink-0 rounded text-muted focus-visible:outline-2 focus-visible:outline-offset-2"
-      >
-        <VolumeIcon muted={muted} />
-      </button>
+      <span className="text-muted">
+        <VolumeIcon />
+      </span>
       <input
         type="range"
         name="masterVolume"
