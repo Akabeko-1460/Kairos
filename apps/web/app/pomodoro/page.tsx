@@ -7,15 +7,12 @@ import { TimerRing } from "@/components/TimerRing";
 import { VolumeSlider } from "@/components/VolumeSlider";
 import { useFreeplay } from "@/hooks/useFreeplay";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { useMediaSession } from "@/hooks/useMediaSession";
 import { useNow } from "@/hooks/useNow";
 import { useSoundscape } from "@/hooks/useSoundscape";
 import { useTaskListStore, type TaskItem } from "@/hooks/useTaskList";
 import { useTimerStore } from "@/hooks/useTimer";
-import { useWakeLock } from "@/hooks/useWakeLock";
 import { useBackgroundArtStore } from "@/lib/backgroundArtStore";
 import { formatMmSs } from "@/lib/formatTime";
-import { useSettingsStore } from "@/lib/settingsStore";
 import { FOCUS_SOUND_THEMES } from "@/lib/soundThemes";
 import { isRunning, progress, remainingMs, type PomodoroPreset } from "@kairos/core";
 import type { ThemeId } from "@kairos/audio-engine";
@@ -119,9 +116,6 @@ function phaseLabel(phase: string): string {
 
 export default function PomodoroPage() {
   const state = useTimerStore((s) => s.state);
-  const wakeLockEnabled = useSettingsStore((s) => s.wakeLockEnabled);
-  useMediaSession();
-  useWakeLock(state, wakeLockEnabled);
   const start = useTimerStore((s) => s.start);
   const pause = useTimerStore((s) => s.pause);
   const resume = useTimerStore((s) => s.resume);
