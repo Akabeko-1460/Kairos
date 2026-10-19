@@ -3,7 +3,6 @@
 import {
   cuePatternDurationSec,
   NEUTRAL_ENVIRONMENT,
-  parseSoundPacks,
   RECOMMENDED_TRANSITION_T,
   smoothEnvironment,
   SoundscapeEngine,
@@ -11,6 +10,7 @@ import {
   timeOfDayFor,
   type CuePattern,
   type EnvironmentModifier,
+  type SoundPack,
   type ThemeId,
   type WeatherCategory,
 } from "@kairos/audio-engine";
@@ -349,7 +349,9 @@ export const useSoundscapeRuntime = create<SoundscapeRuntimeStore>((set, get) =>
           const created = new SoundscapeEngine();
           await created.init();
           const res = await fetch("/packs.json");
-          const pack = parseSoundPacks(await res.json())[0]!;
+          const { packs } = (await res.json()) as { packs: SoundPack[] };
+          const pack = packs[0];
+          if (!pack) throw new Error("packs.json に SoundPack が1つも定義されていません。");
           await created.loadPack(pack);
           // Start前・Pomodoro開始前に音量バーが操作されている場合があるので、
           // エンジン生成のタイミングでその時点のマスター音量を適用する。
